@@ -1,0 +1,279 @@
+// ═══════════════════════════════════════════════════════════
+// QUICK SALES HUB — Database Schema
+// ═══════════════════════════════════════════════════════════
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ── Enums ─────────────────────────────────────────────────
+
+enum UserRole {
+  BUYER
+  SELLER
+  ADMIN
+  DRIVER
+}
+
+enum ListingStatus {
+  DRAFT
+  PENDING
+  ACTIVE
+  SOLD
+  EXPIRED
+  REJECTED
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  ESCROW
+  COMPLETED
+  REFUNDED
+  FAILED
+}
+
+enum DeliveryStatus {
+  PENDING
+  ACCEPTED
+  PICKED_UP
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+// ── Models ────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  phone         String?   @unique
+  name          String
+  password      String
+  role          UserRole  @default(BUYER)
+  avatar        String?
+  bio           String?
+  location      String?
+  isVerified    Boolean   @default(false)
+  isBanned      Boolean   @default(false)
+  rating        Float     @default(0)
+  totalRatings  Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  listings      Listing[]
+  buyerOrders   Order[]        @relation("BuyerOrders")
+  sellerOrders  Order[]        @relation("SellerOrders")
+  sentMessages  Message[]      @relation("SentMessages")
+  receivedMessages Message[]   @relation("ReceivedMessages")
+  reviewsGiven  Review[]       @relation("ReviewsGiven")
+  reviewsReceived Review[]     @relation("ReviewsReceived")
+  savedListings SavedListing[]
+  deliveries    Delivery[]     @relation("DriverDeliveries")
+  payments      Payment[]
+  conversations ConversationParticipant[]
+  notifications Notification[]
+
+  @@map("users")
+}
+
+model Listing {
+  id          String        @id @default(cuid())
+  title       String
+  description String
+  price       Float
+  category    String
+  location    String
+  images      String[]      @default([])
+  status      ListingStatus @default(PENDING)
+  isPromoted  Boolean       @default(false)
+  promotedUntil DateTime?
+  views       Int           @default(0)
+  saves       Int           @default(0)
+  sellerId    String
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  // Relations
+  seller       User           @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  orders       Order[]
+  savedBy      SavedListing[]
+  conversations Conversation[]
+
+  @@index([category])
+  @@index([location])
+  @@index([status])
+  @@index([sellerId])
+  @@index([createdAt(sort: Desc)])
+  @@map("listings")
+}
+
+model SavedListing {
+  id        String   @id @default(cuid())
+  userId    String
+  listingId String
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, listingId])
+  @@map("saved_listings")
+}
+
+model Conversation {
+  id          String    @id @default(cuid())
+  listingId   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  listing      Listing?  @relation(fields: [listingId], references: [id])
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  @@map("conversations")
+}
+
+model ConversationParticipant {
+  id             String   @id @default(cuid())
+  conversationId String
+  userId         String
+  lastReadAt     DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([conversationId, userId])
+  @@map("conversation_participants")
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  conversationId String
+  senderId       String
+  receiverId     String
+  content        String
+  isRead         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  sender       User         @relation("SentMessages", fields: [senderId], references: [id])
+  receiver     User         @relation("ReceivedMessages", fields: [receiverId], references: [id])
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@map("messages")
+}
+
+model Order {
+  id         String      @id @default(cuid())
+  listingId  String
+  buyerId    String
+  sellerId   String
+  amount     Float
+  status     OrderStatus @default(PENDING)
+  notes      String?
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  listing  Listing   @relation(fields: [listingId], references: [id])
+  buyer    User      @relation("BuyerOrders", fields: [buyerId], references: [id])
+  seller   User      @relation("SellerOrders", fields: [sellerId], references: [id])
+  payment  Payment?
+  delivery Delivery?
+  review   Review?
+
+  @@index([buyerId])
+  @@index([sellerId])
+  @@index([status])
+  @@map("orders")
+}
+
+model Payment {
+  id              String        @id @default(cuid())
+  orderId         String        @unique
+  userId          String
+  amount          Float
+  fee             Float         @default(0)
+  status          PaymentStatus @default(PENDING)
+  provider        String        @default("paystack")
+  providerRef     String?
+  providerTxnId   String?       @unique
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+  user  User  @relation(fields: [userId], references: [id])
+
+  @@index([status])
+  @@map("payments")
+}
+
+model Delivery {
+  id            String         @id @default(cuid())
+  orderId       String         @unique
+  driverId      String?
+  pickupAddress String
+  dropoffAddress String
+  price         Float          @default(0)
+  status        DeliveryStatus @default(PENDING)
+  trackingCode  String?        @unique
+  pickedUpAt    DateTime?
+  deliveredAt   DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  order  Order @relation(fields: [orderId], references: [id])
+  driver User? @relation("DriverDeliveries", fields: [driverId], references: [id])
+
+  @@index([driverId])
+  @@index([status])
+  @@map("deliveries")
+}
+
+model Review {
+  id         String   @id @default(cuid())
+  orderId    String   @unique
+  reviewerId String
+  revieweeId String
+  rating     Int      // 1–5
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  order    Order @relation(fields: [orderId], references: [id])
+  reviewer User  @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewee User  @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+
+  @@map("reviews")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  body      String
+  type      String   // message, order, review, promotion, system
+  isRead    Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, isRead])
+  @@map("notifications")
+}
