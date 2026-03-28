@@ -114,8 +114,7 @@ export default function HomePage() {
 
   // Persist saved IDs
   useEffect(() => {
-    localStorage.setItem("qsh_saved_ids", JSON.stringify([...savedIds]));
-  }, [savedIds]);
+    localStorage.setItem("qsh_saved_ids", JSON.stringify(Array.from(savedIds)));
 
   const toggleSave = (id: string) => {
     setSavedIds((prev) => {
