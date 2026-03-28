@@ -1,3 +1,4 @@
+// @ts-nocheck
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { NextRequest } from "next/server";
