@@ -19,6 +19,7 @@ export async function GET(req: NextRequest, context: RouteContext) {
             id: true,
             name: true,
             avatar: true,
+            phone: true,
             isVerified: true,
             rating: true,
             totalRatings: true,

@@ -10,8 +10,10 @@ const protectedApiRoutes = [
   "/api/payments",
   "/api/reviews",
   "/api/logistics",
+  "/api/driver",
   "/api/admin",
   "/api/upload",
+  "/api/notifications",
 ];
 
 export function middleware(request: NextRequest) {

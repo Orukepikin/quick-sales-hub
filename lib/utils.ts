@@ -5,7 +5,7 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 export function formatPrice(amount: number): string {
-  return "₦" + amount.toLocaleString("en-NG");
+  return "NGN " + Number(amount || 0).toLocaleString("en-NG");
 }
 
 export function formatDate(date: Date | string): string {
@@ -53,65 +53,82 @@ export function generateTrackingCode(): string {
   return code;
 }
 
+export function normalizePhoneForWhatsApp(phone?: string | null): string {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("234")) return digits;
+  if (digits.startsWith("0")) return `234${digits.slice(1)}`;
+  return digits;
+}
+
+export function whatsappUrl(phone?: string | null, message?: string): string | null {
+  const normalized = normalizePhoneForWhatsApp(phone);
+  if (!normalized) return null;
+  const text = message ? `?text=${encodeURIComponent(message)}` : "";
+  return `https://wa.me/${normalized}${text}`;
+}
+
 export const CATEGORIES = [
-  { id: "phones", name: "Phones & Tablets", icon: "📱" },
-  { id: "computing", name: "Laptops & Computers", icon: "💻" },
-  { id: "electronics", name: "Electronics", icon: "📺" },
-  { id: "gaming", name: "Gaming & Consoles", icon: "🎮" },
-  { id: "accessories", name: "Phone Accessories", icon: "🎧" },
-  { id: "cars", name: "Cars", icon: "🚗" },
-  { id: "motorcycles", name: "Motorcycles & Scooters", icon: "🏍️" },
-  { id: "trucks", name: "Trucks & Trailers", icon: "🚛" },
-  { id: "autoparts", name: "Vehicle Parts", icon: "🔩" },
-  { id: "apartments", name: "Apartments & Flats", icon: "🏢" },
-  { id: "houses", name: "Houses & Land", icon: "🏠" },
-  { id: "shortlet", name: "Short Let & Airbnb", icon: "🏨" },
-  { id: "commercial", name: "Commercial Property", icon: "🏗️" },
-  { id: "clothing", name: "Clothing", icon: "👗" },
-  { id: "shoes", name: "Shoes & Footwear", icon: "👟" },
-  { id: "bags", name: "Bags & Luggage", icon: "👜" },
-  { id: "watches", name: "Watches & Jewelry", icon: "⌚" },
-  { id: "fabrics", name: "Fabrics & Textiles", icon: "🧵" },
-  { id: "furniture", name: "Furniture", icon: "🪑" },
-  { id: "appliances", name: "Home Appliances", icon: "🧊" },
-  { id: "kitchen", name: "Kitchen & Dining", icon: "🍳" },
-  { id: "decor", name: "Home Decor", icon: "🖼️" },
-  { id: "skincare", name: "Skincare & Makeup", icon: "💄" },
-  { id: "haircare", name: "Hair & Wigs", icon: "💇" },
-  { id: "fitness", name: "Fitness & Gym", icon: "💪" },
-  { id: "supplements", name: "Health Supplements", icon: "💊" },
-  { id: "repair", name: "Repair & Installation", icon: "🔧" },
-  { id: "cleaning", name: "Cleaning Services", icon: "🧹" },
-  { id: "tutoring", name: "Tutoring & Lessons", icon: "📖" },
-  { id: "catering", name: "Catering & Events", icon: "🎂" },
-  { id: "webdev", name: "Web & App Development", icon: "🌐" },
-  { id: "photography", name: "Photography & Video", icon: "📸" },
-  { id: "food", name: "Food & Drinks", icon: "🍔" },
-  { id: "farming", name: "Farming & Agriculture", icon: "🌾" },
-  { id: "livestock", name: "Livestock & Poultry", icon: "🐔" },
-  { id: "jobs", name: "Jobs & Vacancies", icon: "💼" },
-  { id: "internships", name: "Internships & NYSC", icon: "🎓" },
-  { id: "books", name: "Books & Education", icon: "📚" },
-  { id: "babies", name: "Babies & Kids", icon: "🧸" },
-  { id: "maternity", name: "Maternity & Pregnancy", icon: "🤱" },
-  { id: "toys", name: "Toys & Games", icon: "🎲" },
-  { id: "sports", name: "Sports Equipment", icon: "⚽" },
-  { id: "camping", name: "Camping & Outdoors", icon: "⛺" },
-  { id: "bicycles", name: "Bicycles", icon: "🚲" },
-  { id: "music", name: "Music & Instruments", icon: "🎵" },
-  { id: "tickets", name: "Event Tickets", icon: "🎫" },
-  { id: "pets", name: "Pets & Animals", icon: "🐕" },
-  { id: "office", name: "Office Supplies", icon: "🖨️" },
-  { id: "generators", name: "Generators & Power", icon: "⚡" },
-  { id: "solar", name: "Solar & Inverters", icon: "☀️" },
-  { id: "other", name: "Other", icon: "📦" },
+  { id: "phones-tablets", name: "Phones & Tablets", icon: "Phone" },
+  { id: "computers", name: "Laptops & Computers", icon: "Laptop" },
+  { id: "electronics", name: "Electronics", icon: "TV" },
+  { id: "gaming", name: "Gaming & Consoles", icon: "Game" },
+  { id: "vehicles", name: "Cars & Vehicles", icon: "Car" },
+  { id: "vehicle-parts", name: "Vehicle Parts", icon: "Parts" },
+  { id: "property", name: "Property & Apartments", icon: "Home" },
+  { id: "fashion", name: "Fashion & Clothing", icon: "Wear" },
+  { id: "shoes-bags", name: "Shoes, Bags & Accessories", icon: "Bag" },
+  { id: "beauty", name: "Beauty, Hair & Skincare", icon: "Beauty" },
+  { id: "home-furniture", name: "Home, Furniture & Appliances", icon: "Home" },
+  { id: "services", name: "Services", icon: "Work" },
+  { id: "jobs", name: "Jobs & Vacancies", icon: "Jobs" },
+  { id: "food-agriculture", name: "Food & Agriculture", icon: "Food" },
+  { id: "babies-kids", name: "Babies & Kids", icon: "Kids" },
+  { id: "sports-outdoors", name: "Sports & Outdoors", icon: "Sport" },
+  { id: "books-education", name: "Books & Education", icon: "Books" },
+  { id: "power-energy", name: "Generators, Solar & Power", icon: "Power" },
+  { id: "pets", name: "Pets & Animals", icon: "Pets" },
+  { id: "office-business", name: "Office & Business Equipment", icon: "Office" },
+  { id: "events", name: "Events & Tickets", icon: "Event" },
+  { id: "other", name: "Other", icon: "Other" },
 ] as const;
 
 export const LOCATIONS = [
-  "Lagos", "Abuja", "Port Harcourt", "Ibadan", "Kano",
-  "Enugu", "Benin City", "Kaduna", "Warri", "Owerri",
-  "Abeokuta", "Calabar", "Jos", "Uyo", "Ilorin",
-  "Akure", "Onitsha", "Aba", "Asaba", "Maiduguri",
-  "Sokoto", "Bauchi", "Yola", "Lokoja", "Osogbo",
-  "Eket", "Umuahia", "Abakaliki", "Lafia", "Gombe",
+  "Abia",
+  "Adamawa",
+  "Akwa Ibom",
+  "Anambra",
+  "Bauchi",
+  "Bayelsa",
+  "Benue",
+  "Borno",
+  "Cross River",
+  "Delta",
+  "Ebonyi",
+  "Edo",
+  "Ekiti",
+  "Enugu",
+  "FCT - Abuja",
+  "Gombe",
+  "Imo",
+  "Jigawa",
+  "Kaduna",
+  "Kano",
+  "Katsina",
+  "Kebbi",
+  "Kogi",
+  "Kwara",
+  "Lagos",
+  "Nasarawa",
+  "Niger",
+  "Ogun",
+  "Ondo",
+  "Osun",
+  "Oyo",
+  "Plateau",
+  "Rivers",
+  "Sokoto",
+  "Taraba",
+  "Yobe",
+  "Zamfara",
 ] as const;

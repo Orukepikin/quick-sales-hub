@@ -7,15 +7,16 @@ import { CATEGORIES, LOCATIONS } from "@/lib/utils";
 interface CreateListingFormProps {
   onSubmit: (form: any) => void;
   onCancel: () => void;
+  editing?: any;
 }
 
-export default function CreateListingForm({ onSubmit, onCancel }: CreateListingFormProps) {
+export default function CreateListingForm({ onSubmit, onCancel, editing }: CreateListingFormProps) {
   const [form, setForm] = useState({
-    title: "",
-    desc: "",
-    price: "",
-    category: "",
-    location: "",
+    title: editing?.title || "",
+    desc: editing?.desc || editing?.description || "",
+    price: editing?.price ? String(editing.price) : "",
+    category: editing?.cat || editing?.category || "",
+    location: editing?.loc || editing?.location || "",
   });
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const [showAllCategories, setShowAllCategories] = useState(false);
@@ -45,12 +46,21 @@ export default function CreateListingForm({ onSubmit, onCancel }: CreateListingF
     });
   };
 
-  const handleSubmit = () => {
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const handleSubmit = async () => {
     if (!form.title || !form.category || !form.price || !form.location || !form.desc) {
       alert("Please fill in all required fields");
       return;
     }
-    onSubmit({ ...form, images: images.map((img) => img.preview) });
+    const imageData = await Promise.all(images.map((img) => fileToDataUrl(img.file)));
+    onSubmit({ ...form, images: imageData });
   };
 
   const inputClass =

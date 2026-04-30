@@ -59,6 +59,7 @@ export async function GET(req: NextRequest) {
               id: true,
               name: true,
               avatar: true,
+              phone: true,
               isVerified: true,
               rating: true,
             },
@@ -109,9 +110,20 @@ export async function POST(req: NextRequest) {
             id: true,
             name: true,
             avatar: true,
+            phone: true,
             isVerified: true,
           },
         },
+      },
+    });
+
+    await prisma.notification.create({
+      data: {
+        userId: payload.userId,
+        title: "Listing published",
+        body: `${listing.title} is now live on Quick Sales Hub.`,
+        type: "listing",
+        data: { listingId: listing.id },
       },
     });
 

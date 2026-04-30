@@ -46,7 +46,19 @@ export const authApi = {
   login: (data: { email: string; password: string }) =>
     apiClient("/api/auth/login", { method: "POST", body: data }),
 
+  oauth: (data: { role: string }, token: string) =>
+    apiClient("/api/auth/oauth", { method: "POST", body: data, token }),
+
   me: () => apiClient("/api/auth/me"),
+
+  updateProfile: (data: {
+    name?: string;
+    phone?: string;
+    whatsapp?: string;
+    avatar?: string;
+    bio?: string;
+    location?: string;
+  }) => apiClient("/api/auth/me", { method: "PATCH", body: data }),
 };
 
 // ── Listings ────────────────────────────────────────────────
@@ -80,6 +92,11 @@ export const listingsApi = {
     apiClient(`/api/listings/${id}/save`, { method: "DELETE" }),
 };
 
+export const uploadApi = {
+  images: (images: string[]) =>
+    apiClient("/api/upload", { method: "POST", body: { images } }),
+};
+
 // ── Chat ────────────────────────────────────────────────────
 export const chatApi = {
   getConversations: () => apiClient("/api/chat"),
@@ -93,6 +110,29 @@ export const chatApi = {
     listingId?: string;
     conversationId?: string;
   }) => apiClient("/api/chat", { method: "POST", body: data }),
+};
+
+export const notificationsApi = {
+  getAll: () => apiClient("/api/notifications"),
+  markRead: (id: string) =>
+    apiClient("/api/notifications", { method: "PATCH", body: { id } }),
+  markAllRead: () =>
+    apiClient("/api/notifications", { method: "PATCH", body: { all: true } }),
+};
+
+export const logisticsApi = {
+  getAll: () => apiClient("/api/logistics"),
+  updateStatus: (deliveryId: string, status: string, price?: number) =>
+    apiClient("/api/logistics", {
+      method: "PATCH",
+      body: { deliveryId, status, price },
+    }),
+};
+
+export const driverApi = {
+  getVerification: () => apiClient("/api/driver/verification"),
+  submitVerification: (data: Record<string, unknown>) =>
+    apiClient("/api/driver/verification", { method: "POST", body: data }),
 };
 
 // ── Orders ──────────────────────────────────────────────────

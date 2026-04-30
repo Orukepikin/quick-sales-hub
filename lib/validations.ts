@@ -24,6 +24,15 @@ export const createListingSchema = z.object({
 
 export const updateListingSchema = createListingSchema.partial();
 
+export const updateProfileSchema = z.object({
+  name: z.string().min(2).max(120).optional(),
+  phone: z.string().max(30).optional(),
+  whatsapp: z.string().max(30).optional(),
+  avatar: z.string().url().or(z.literal("")).optional(),
+  bio: z.string().max(1000).optional(),
+  location: z.string().min(1).max(80).optional(),
+});
+
 export const sendMessageSchema = z.object({
   conversationId: z.string().optional(),
   receiverId: z.string(),
@@ -55,6 +64,17 @@ export const createDeliverySchema = z.object({
   price: z.number().nonnegative().optional(),
 });
 
+export const driverVerificationSchema = z.object({
+  fullName: z.string().min(2, "Full legal name is required").max(120),
+  phone: z.string().min(7, "Phone number is required").max(30),
+  address: z.string().min(5, "Residential address is required").max(500),
+  vehicleType: z.string().min(1, "Vehicle type is required").max(80),
+  plateNumber: z.string().min(3, "Plate number is required").max(30),
+  driversLicense: z.string().min(1, "Driver's license upload is required"),
+  vehicleInsurance: z.string().optional(),
+  selfie: z.string().min(1, "Selfie with ID is required"),
+});
+
 export const updateDeliverySchema = z.object({
   deliveryId: z.string(),
   status: z.enum(["ACCEPTED", "PICKED_UP", "IN_TRANSIT", "DELIVERED", "CANCELLED"]),
@@ -64,6 +84,7 @@ export const updateDeliverySchema = z.object({
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateListingInput = z.infer<typeof createListingSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;

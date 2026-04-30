@@ -2,6 +2,8 @@
 
 import { useState, useRef } from "react";
 import { Upload, Shield, CheckCircle, AlertTriangle, Camera } from "lucide-react";
+import toast from "react-hot-toast";
+import { driverApi } from "@/lib/api-client";
 
 interface DriverVerificationProps {
   onVerified: () => void;
@@ -27,6 +29,38 @@ export default function DriverVerification({ onVerified }: DriverVerificationPro
   const handleFileSelect = (field: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) setFormData(prev => ({ ...prev, [field]: file }));
+  };
+
+  const fileToDataUrl = (file: File) =>
+    new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+  const submitVerification = async () => {
+    if (!formData.driversLicense || !formData.selfie) {
+      alert("Please upload at least your driver's license and selfie with ID");
+      return;
+    }
+
+    try {
+      await driverApi.submitVerification({
+        fullName: formData.fullName,
+        phone: formData.phone,
+        address: formData.address,
+        vehicleType: formData.vehicleType,
+        plateNumber: formData.plateNumber,
+        driversLicense: await fileToDataUrl(formData.driversLicense),
+        vehicleInsurance: formData.vehicleInsurance ? await fileToDataUrl(formData.vehicleInsurance) : "",
+        selfie: await fileToDataUrl(formData.selfie),
+      });
+      toast.success("Verification submitted for review");
+      setStep("review");
+    } catch (error: any) {
+      toast.error(error.message || "Could not submit verification");
+    }
   };
 
   if (step === "info") {
@@ -173,13 +207,7 @@ export default function DriverVerification({ onVerified }: DriverVerificationPro
           </p>
         </div>
 
-        <button onClick={() => {
-          if (!formData.driversLicense || !formData.selfie) {
-            alert("Please upload at least your driver's license and selfie with ID");
-            return;
-          }
-          setStep("review");
-        }} className="w-full py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base hover:bg-brand-blue-dark transition-all">
+        <button onClick={submitVerification} className="w-full py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base hover:bg-brand-blue-dark transition-all">
           Submit for Verification
         </button>
 
@@ -196,10 +224,10 @@ export default function DriverVerification({ onVerified }: DriverVerificationPro
       </div>
       <h2 className="font-display text-2xl font-bold text-gray-900 mb-3">Verification Submitted!</h2>
       <p className="text-gray-500 text-sm leading-relaxed max-w-[400px] mx-auto mb-8">
-        Your documents have been submitted for review. In the meantime, you can start browsing available delivery jobs. We&apos;ll notify you once your full verification is complete.
+        Your documents have been submitted for review. You will be notified when an admin approves your driver access.
       </p>
       <button onClick={onVerified} className="px-8 py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base hover:bg-brand-blue-dark transition-all">
-        Start Accepting Jobs
+        Back to Dashboard
       </button>
     </div>
   );

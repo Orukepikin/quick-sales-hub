@@ -11,12 +11,13 @@ interface HeaderProps {
   onNavigate: (p: string) => void;
   userRole?: string;
   userName?: string;
+  userId?: string;
   userAvatar?: string;
   onSwitchRole?: (role: string) => void;
   onLogout?: () => void;
 }
 
-export default function Header({ search, onSearchChange, page, onNavigate, userRole, userName, userAvatar, onSwitchRole, onLogout }: HeaderProps) {
+export default function Header({ search, onSearchChange, page, onNavigate, userRole, userName, userId, userAvatar, onSwitchRole, onLogout }: HeaderProps) {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
 
   const roles = [
@@ -61,7 +62,7 @@ export default function Header({ search, onSearchChange, page, onNavigate, userR
           ))}
 
           {/* Notification bell */}
-          <NotificationBell />
+          <NotificationBell userId={userId} />
 
           {/* Profile dropdown */}
           <div className="relative">

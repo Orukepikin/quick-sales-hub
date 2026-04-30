@@ -12,16 +12,24 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    const currentUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { role: true, isVerified: true },
+    });
+
     let where: any = {};
 
-    if (payload.role === "DRIVER") {
+    if (currentUser?.role === "DRIVER") {
+      if (!currentUser.isVerified) {
+        return NextResponse.json({ error: "Driver verification pending" }, { status: 403 });
+      }
       where = {
         OR: [
           { driverId: payload.userId },
           { status: "PENDING", driverId: null }, // Available jobs
         ],
       };
-    } else if (payload.role !== "ADMIN") {
+    } else if (currentUser?.role !== "ADMIN") {
       where = {
         order: {
           OR: [
@@ -39,8 +47,8 @@ export async function GET(req: NextRequest) {
         order: {
           include: {
             listing: { select: { title: true } },
-            buyer: { select: { name: true, location: true } },
-            seller: { select: { name: true, location: true } },
+            buyer: { select: { name: true, location: true, phone: true } },
+            seller: { select: { name: true, location: true, phone: true } },
           },
         },
         driver: {
@@ -133,6 +141,11 @@ export async function PATCH(req: NextRequest) {
     const body = await req.json();
     const { deliveryId, status, price } = updateDeliverySchema.parse(body);
 
+    const currentUser = await prisma.user.findUnique({
+      where: { id: payload.userId },
+      select: { role: true, isVerified: true },
+    });
+
     const existing = await prisma.delivery.findUnique({
       where: { id: deliveryId },
       include: { order: true },
@@ -145,7 +158,10 @@ export async function PATCH(req: NextRequest) {
       );
     }
 
-    if (payload.role === "DRIVER") {
+    if (currentUser?.role === "DRIVER") {
+      if (!currentUser.isVerified) {
+        return NextResponse.json({ error: "Driver verification pending" }, { status: 403 });
+      }
       if (status === "ACCEPTED" && existing.driverId && existing.driverId !== payload.userId) {
         return NextResponse.json({ error: "Delivery already accepted" }, { status: 409 });
       }
@@ -153,7 +169,7 @@ export async function PATCH(req: NextRequest) {
       if (status !== "ACCEPTED" && existing.driverId !== payload.userId) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
-    } else if (payload.role !== "ADMIN") {
+    } else if (currentUser?.role !== "ADMIN") {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
