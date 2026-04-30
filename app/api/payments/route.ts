@@ -5,6 +5,7 @@ import {
   initializePayment,
   generatePaymentReference,
 } from "@/lib/paystack";
+import { initiatePaymentSchema } from "@/lib/validations";
 
 // POST /api/payments — Initialize payment
 export async function POST(req: NextRequest) {
@@ -14,11 +15,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { orderId, amount } = await req.json();
+    const body = await req.json();
+    const { orderId, amount } = initiatePaymentSchema.parse(body);
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
-      include: { buyer: true },
+      include: { buyer: true, payment: true },
     });
 
     if (!order) {
@@ -30,6 +32,20 @@ export async function POST(req: NextRequest) {
 
     if (order.buyerId !== payload.userId) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
+    if (order.payment) {
+      return NextResponse.json(
+        { error: "Payment has already been initialized for this order" },
+        { status: 409 }
+      );
+    }
+
+    if (amount !== order.amount) {
+      return NextResponse.json(
+        { error: "Payment amount must match the order amount" },
+        { status: 400 }
+      );
     }
 
     const reference = generatePaymentReference();
@@ -72,7 +88,13 @@ export async function POST(req: NextRequest) {
       authorizationUrl: paystackRes.data.authorization_url,
       reference: paystackRes.data.reference,
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return NextResponse.json(
+        { error: error.errors[0].message },
+        { status: 400 }
+      );
+    }
     console.error("Initialize payment error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

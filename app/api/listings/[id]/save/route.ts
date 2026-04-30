@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 
-// POST /api/listings/[id]/save — Save listing
-export async function POST(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
+// POST /api/listings/[id]/save - Save listing
+export async function POST(req: NextRequest, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const payload = getUserFromRequest(req);
     if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -16,22 +18,19 @@ export async function POST(
     await prisma.savedListing.create({
       data: {
         userId: payload.userId,
-        listingId: params.id,
+        listingId: id,
       },
     });
 
     await prisma.listing.update({
-      where: { id: params.id },
+      where: { id },
       data: { saves: { increment: 1 } },
     });
 
     return NextResponse.json({ message: "Listing saved" });
   } catch (error: any) {
     if (error.code === "P2002") {
-      return NextResponse.json(
-        { error: "Already saved" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Already saved" }, { status: 400 });
     }
     console.error("Save listing error:", error);
     return NextResponse.json(
@@ -41,12 +40,10 @@ export async function POST(
   }
 }
 
-// DELETE /api/listings/[id]/save — Unsave listing
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+// DELETE /api/listings/[id]/save - Unsave listing
+export async function DELETE(req: NextRequest, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const payload = getUserFromRequest(req);
     if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -56,13 +53,13 @@ export async function DELETE(
       where: {
         userId_listingId: {
           userId: payload.userId,
-          listingId: params.id,
+          listingId: id,
         },
       },
     });
 
     await prisma.listing.update({
-      where: { id: params.id },
+      where: { id },
       data: { saves: { decrement: 1 } },
     });
 

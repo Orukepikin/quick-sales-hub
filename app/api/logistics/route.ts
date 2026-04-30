@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { generateTrackingCode } from "@/lib/utils";
+import { createDeliverySchema, updateDeliverySchema } from "@/lib/validations";
 
 // GET /api/logistics — Get deliveries (filtered by role)
 export async function GET(req: NextRequest) {
@@ -66,7 +67,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { orderId, pickupAddress, dropoffAddress, price } = await req.json();
+    const body = await req.json();
+    const { orderId, pickupAddress, dropoffAddress, price } =
+      createDeliverySchema.parse(body);
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
@@ -77,6 +80,14 @@ export async function POST(req: NextRequest) {
         { error: "Order not found" },
         { status: 404 }
       );
+    }
+
+    if (
+      payload.role !== "ADMIN" &&
+      order.buyerId !== payload.userId &&
+      order.sellerId !== payload.userId
+    ) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const delivery = await prisma.delivery.create({
@@ -96,7 +107,13 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ delivery }, { status: 201 });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return NextResponse.json(
+        { error: error.errors[0].message },
+        { status: 400 }
+      );
+    }
     console.error("Create delivery error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -113,7 +130,32 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { deliveryId, status, price } = await req.json();
+    const body = await req.json();
+    const { deliveryId, status, price } = updateDeliverySchema.parse(body);
+
+    const existing = await prisma.delivery.findUnique({
+      where: { id: deliveryId },
+      include: { order: true },
+    });
+
+    if (!existing) {
+      return NextResponse.json(
+        { error: "Delivery not found" },
+        { status: 404 }
+      );
+    }
+
+    if (payload.role === "DRIVER") {
+      if (status === "ACCEPTED" && existing.driverId && existing.driverId !== payload.userId) {
+        return NextResponse.json({ error: "Delivery already accepted" }, { status: 409 });
+      }
+
+      if (status !== "ACCEPTED" && existing.driverId !== payload.userId) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } else if (payload.role !== "ADMIN") {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
 
     const updateData: any = { status };
 
@@ -152,7 +194,13 @@ export async function PATCH(req: NextRequest) {
     }
 
     return NextResponse.json({ delivery });
-  } catch (error) {
+  } catch (error: any) {
+    if (error.name === "ZodError") {
+      return NextResponse.json(
+        { error: error.errors[0].message },
+        { status: 400 }
+      );
+    }
     console.error("Update delivery error:", error);
     return NextResponse.json(
       { error: "Internal server error" },

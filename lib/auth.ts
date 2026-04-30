@@ -3,7 +3,15 @@ import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 import { NextRequest } from "next/server";
 
-const JWT_SECRET = process.env.JWT_SECRET || "quick-sales-hub-secret-change-me";
+function getSigningSecret(): string {
+  const secret = process.env.JWT_SECRET;
+
+  if (!secret && process.env.NODE_ENV === "production") {
+    throw new Error("JWT_SECRET must be configured in production");
+  }
+
+  return secret || "quick-sales-hub-dev-secret";
+}
 
 export interface JWTPayload {
   userId: string;
@@ -12,14 +20,14 @@ export interface JWTPayload {
 }
 
 export function signToken(payload: JWTPayload): string {
-  return jwt.sign(payload, JWT_SECRET, {
+  return jwt.sign(payload, getSigningSecret(), {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
   });
 }
 
 export function verifyToken(token: string): JWTPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as JWTPayload;
+    return jwt.verify(token, getSigningSecret()) as JWTPayload;
   } catch {
     return null;
   }

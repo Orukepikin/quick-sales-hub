@@ -48,9 +48,23 @@ export const initiatePaymentSchema = z.object({
   amount: z.number().positive(),
 });
 
+export const createDeliverySchema = z.object({
+  orderId: z.string(),
+  pickupAddress: z.string().min(5, "Pickup address is required").max(500),
+  dropoffAddress: z.string().min(5, "Dropoff address is required").max(500),
+  price: z.number().nonnegative().optional(),
+});
+
+export const updateDeliverySchema = z.object({
+  deliveryId: z.string(),
+  status: z.enum(["ACCEPTED", "PICKED_UP", "IN_TRANSIT", "DELIVERED", "CANCELLED"]),
+  price: z.number().nonnegative().optional(),
+});
+
 export type SignupInput = z.infer<typeof signupSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
 export type CreateListingInput = z.infer<typeof createListingSchema>;
 export type SendMessageInput = z.infer<typeof sendMessageSchema>;
 export type CreateOrderInput = z.infer<typeof createOrderSchema>;
 export type CreateReviewInput = z.infer<typeof createReviewSchema>;
+export type InitiatePaymentInput = z.infer<typeof initiatePaymentSchema>;

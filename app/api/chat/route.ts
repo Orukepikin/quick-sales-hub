@@ -80,7 +80,33 @@ export async function POST(req: NextRequest) {
     let conversationId = validated.conversationId;
 
     // Create conversation if it doesn't exist
-    if (!conversationId) {
+    if (conversationId) {
+      const conversation = await prisma.conversation.findFirst({
+        where: {
+          id: conversationId,
+          participants: {
+            some: { userId: payload.userId },
+          },
+        },
+        include: {
+          participants: {
+            select: { userId: true },
+          },
+        },
+      });
+
+      if (!conversation) {
+        return NextResponse.json({ error: "Conversation not found" }, { status: 404 });
+      }
+
+      const receiverIsParticipant = conversation.participants.some(
+        (participant) => participant.userId === validated.receiverId
+      );
+
+      if (!receiverIsParticipant || validated.receiverId === payload.userId) {
+        return NextResponse.json({ error: "Invalid receiver" }, { status: 400 });
+      }
+    } else {
       // Check for existing conversation between these users about this listing
       const existing = await prisma.conversation.findFirst({
         where: {

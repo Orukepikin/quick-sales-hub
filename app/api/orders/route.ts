@@ -71,9 +71,23 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (listing.status !== "ACTIVE") {
+      return NextResponse.json(
+        { error: "Listing is not available for purchase" },
+        { status: 400 }
+      );
+    }
+
     if (listing.sellerId === payload.userId) {
       return NextResponse.json(
         { error: "Cannot buy your own listing" },
+        { status: 400 }
+      );
+    }
+
+    if (validated.amount !== listing.price) {
+      return NextResponse.json(
+        { error: "Order amount must match the listing price" },
         { status: 400 }
       );
     }

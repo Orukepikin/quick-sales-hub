@@ -19,7 +19,11 @@ export async function GET(req: NextRequest) {
 
     const verification = await verifyPayment(reference);
 
-    if (!verification.status || verification.data.status !== "success") {
+    if (
+      !verification.status ||
+      verification.data.status !== "success" ||
+      verification.data.amount !== Math.round(payment.amount * 100)
+    ) {
       await prisma.payment.update({
         where: { id: payment.id },
         data: { status: "FAILED" },

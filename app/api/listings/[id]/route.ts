@@ -3,14 +3,16 @@ import prisma from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { updateListingSchema } from "@/lib/validations";
 
+type RouteContext = {
+  params: Promise<{ id: string }>;
+};
+
 // GET /api/listings/[id]
-export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const listing = await prisma.listing.findUnique({
-      where: { id: params.id },
+      where: { id },
       include: {
         seller: {
           select: {
@@ -37,7 +39,7 @@ export async function GET(
 
     // Increment views
     await prisma.listing.update({
-      where: { id: params.id },
+      where: { id },
       data: { views: { increment: 1 } },
     });
 
@@ -52,18 +54,16 @@ export async function GET(
 }
 
 // PATCH /api/listings/[id]
-export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function PATCH(req: NextRequest, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const payload = getUserFromRequest(req);
     if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const listing = await prisma.listing.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!listing) {
@@ -81,7 +81,7 @@ export async function PATCH(
     const validated = updateListingSchema.parse(body);
 
     const updated = await prisma.listing.update({
-      where: { id: params.id },
+      where: { id },
       data: validated,
     });
 
@@ -102,18 +102,16 @@ export async function PATCH(
 }
 
 // DELETE /api/listings/[id]
-export async function DELETE(
-  req: NextRequest,
-  { params }: { params: { id: string } }
-) {
+export async function DELETE(req: NextRequest, context: RouteContext) {
   try {
+    const { id } = await context.params;
     const payload = getUserFromRequest(req);
     if (!payload) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const listing = await prisma.listing.findUnique({
-      where: { id: params.id },
+      where: { id },
     });
 
     if (!listing) {
@@ -127,7 +125,7 @@ export async function DELETE(
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    await prisma.listing.delete({ where: { id: params.id } });
+    await prisma.listing.delete({ where: { id } });
 
     return NextResponse.json({ message: "Listing deleted" });
   } catch (error) {

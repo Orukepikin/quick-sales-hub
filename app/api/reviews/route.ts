@@ -57,6 +57,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (order.buyerId !== payload.userId && order.sellerId !== payload.userId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     // Determine reviewee (if buyer reviews, reviewee is seller and vice versa)
     const revieweeId =
       order.buyerId === payload.userId ? order.sellerId : order.buyerId;

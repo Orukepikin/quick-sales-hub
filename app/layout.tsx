@@ -3,7 +3,7 @@ import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Quick Sales Hub — Buy & Sell Anything in Minutes",
+  title: "Quick Sales Hub - Buy & Sell Anything in Minutes",
   description:
     "Nigeria's fastest growing peer-to-peer marketplace. Post ads, browse listings, chat with sellers, and get items delivered to your door.",
   keywords: [
@@ -18,7 +18,7 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: "Quick Sales Hub",
-    description: "Post. Sell. Deliver — In Minutes.",
+    description: "Post. Sell. Deliver - In Minutes.",
     type: "website",
   },
 };
