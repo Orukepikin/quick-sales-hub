@@ -1,4 +1,7 @@
-const API_BASE = process.env.NEXT_PUBLIC_APP_URL || "";
+function getApiUrl(endpoint: string): string {
+  if (typeof window !== "undefined") return endpoint;
+  return `${process.env.NEXT_PUBLIC_APP_URL || ""}${endpoint}`;
+}
 
 interface ApiOptions {
   method?: string;
@@ -23,16 +26,23 @@ async function apiClient<T>(
     if (storedToken) headers["Authorization"] = `Bearer ${storedToken}`;
   }
 
-  const res = await fetch(`${API_BASE}${endpoint}`, {
+  const res = await fetch(getApiUrl(endpoint), {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
   });
 
-  const data = await res.json();
+  const contentType = res.headers.get("content-type") || "";
+  const data = contentType.includes("application/json")
+    ? await res.json()
+    : { error: await res.text() };
 
   if (!res.ok) {
     throw new Error(data.error || "Something went wrong");
+  }
+
+  if (!contentType.includes("application/json")) {
+    throw new Error("Server returned an unexpected response. Please refresh and try again.");
   }
 
   return data;
