@@ -33,13 +33,21 @@ export async function POST(req: NextRequest) {
       email.split("@")[0];
     const avatar = googleUser.user_metadata?.avatar_url || null;
 
+    const existingUser = await prisma.user.findUnique({
+      where: { email },
+      select: { role: true, isVerified: true },
+    });
+
     const user = await prisma.user.upsert({
       where: { email },
       update: {
         name,
         avatar,
         role: role as any,
-        isVerified: role === "DRIVER" ? false : undefined,
+        isVerified:
+          role === "DRIVER" && existingUser?.role !== "DRIVER"
+            ? false
+            : undefined,
       },
       create: {
         name,

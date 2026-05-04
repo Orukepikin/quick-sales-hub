@@ -118,7 +118,7 @@ export default function DriverVerification({ onVerified }: DriverVerificationPro
         </div>
 
         <button onClick={() => {
-          if (!formData.fullName || !formData.phone || !formData.vehicleType) {
+          if (!formData.fullName || !formData.phone || !formData.address || !formData.vehicleType || !formData.plateNumber) {
             alert("Please fill in all required fields");
             return;
           }
@@ -227,7 +227,7 @@ export default function DriverVerification({ onVerified }: DriverVerificationPro
         Your documents have been submitted for review. You will be notified when an admin approves your driver access.
       </p>
       <button onClick={onVerified} className="px-8 py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base hover:bg-brand-blue-dark transition-all">
-        Back to Dashboard
+        Back to Profile
       </button>
     </div>
   );

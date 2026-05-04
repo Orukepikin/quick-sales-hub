@@ -72,12 +72,14 @@ export default function HomePage() {
   const hydrateUser = useCallback((user: any, token?: string, preferredRole?: string) => {
     if (token) localStorage.setItem("token", token);
     const role = preferredRole || apiRoleToUi(user.role);
+    const isVerified = Boolean(user.isVerified);
     localStorage.setItem("qsh_role", role);
-    const nextUser = { ...user, role };
+    localStorage.removeItem("qsh_driver_verified");
+    const nextUser = { ...user, role, isVerified };
     setLocalUser(nextUser);
-    setDriverVerified(Boolean(user.isVerified));
+    setDriverVerified(isVerified);
     setView("app");
-    if (role === "driver" && !user.isVerified) setPage("driver-verify");
+    if (role === "driver" && !isVerified) setPage("driver-verify");
     else if (role === "seller") setPage("my-listings");
     else if (role === "driver") setPage("deliveries");
     else setPage("home");
@@ -181,10 +183,11 @@ export default function HomePage() {
 
   const handleSwitchRole = (role: string) => {
     localStorage.setItem("qsh_role", role);
+    localStorage.removeItem("qsh_driver_verified");
     setLocalUser(function(prev: any) { return Object.assign({}, prev, { role: role }); });
 
     if (role === "driver") {
-      var verified = localStorage.getItem("qsh_driver_verified") === "true";
+      var verified = Boolean(localUser?.isVerified);
       setDriverVerified(verified);
       if (!verified) { setPage("driver-verify"); }
       else { setPage("deliveries"); }
@@ -248,6 +251,7 @@ export default function HomePage() {
 
   const handleDriverVerified = () => {
     setDriverVerified(false);
+    setLocalUser(function(prev: any) { return Object.assign({}, prev, { isVerified: false }); });
     setPage("profile");
     toast.success("Verification submitted. Driver access unlocks after approval.");
   };
@@ -288,6 +292,7 @@ export default function HomePage() {
 
       <main className="max-w-[1280px] mx-auto px-4 sm:px-5 py-5 pb-28">
         {page === "driver-verify" && <DriverVerification onVerified={handleDriverVerified} />}
+        {page === "deliveries" && isDriver && !driverVerified && <DriverVerification onVerified={handleDriverVerified} />}
         {page === "deliveries" && isDriver && driverVerified && <DriverDashboard />}
 
         {page === "my-listings" && (
