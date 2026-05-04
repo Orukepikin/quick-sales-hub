@@ -7,3 +7,7 @@ out/
 *.tsbuildinfo
 next-env.d.ts
 .vercel
+android/.idea/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/

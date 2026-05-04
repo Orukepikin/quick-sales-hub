@@ -1,6 +1,11 @@
 # Quick Sales Hub Android App
 
-This project uses Capacitor to package the live Quick Sales Hub web app as an Android app.
+This project includes two Android paths:
+
+1. `mobile/` is the native React Native/Expo app.
+2. `android/` is the earlier Capacitor wrapper around the live website.
+
+For a standalone Android app experience, use `mobile/`.
 
 ## App Details
 
@@ -9,7 +14,14 @@ This project uses Capacitor to package the live Quick Sales Hub web app as an An
 - Web app URL: `https://www.quicksalehub.com`
 - Native project: `android/`
 
-## Commands
+## Native Mobile Commands
+
+```bash
+npm run mobile:start
+npm run mobile:android
+```
+
+## Capacitor Wrapper Commands
 
 ```bash
 npm install
