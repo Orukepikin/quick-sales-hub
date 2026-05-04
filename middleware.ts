@@ -18,6 +18,13 @@ const protectedApiRoutes = [
 
 export function middleware(request: NextRequest) {
   const { pathname, method } = request.nextUrl;
+  const host = request.headers.get("host");
+
+  if (host === "quicksalehub.com") {
+    const url = request.nextUrl.clone();
+    url.hostname = "www.quicksalehub.com";
+    return NextResponse.redirect(url, 308);
+  }
 
   // Only protect API routes that modify data
   if (pathname.startsWith("/api/")) {
@@ -52,5 +59,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/api/:path*"],
+  matcher: ["/api/:path*", "/((?!_next/static|_next/image|favicon.ico).*)"],
 };

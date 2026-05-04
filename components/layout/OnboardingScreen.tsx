@@ -18,16 +18,20 @@ const roleToApi = (role: string | null) => {
 };
 
 const getOAuthRedirectUrl = () => {
+  if (typeof window !== "undefined") {
+    const url = new URL(window.location.origin);
+    if (url.hostname === "quicksalehub.com") {
+      url.hostname = "www.quicksalehub.com";
+    }
+    return `${url.origin}/`;
+  }
+
   const configuredUrl = process.env.NEXT_PUBLIC_APP_URL;
   if (configuredUrl) {
     const withProtocol = configuredUrl.startsWith("http")
       ? configuredUrl
       : `https://${configuredUrl}`;
     return withProtocol.endsWith("/") ? withProtocol : `${withProtocol}/`;
-  }
-
-  if (typeof window !== "undefined") {
-    return `${window.location.origin}/`;
   }
 
   return "https://www.quicksalehub.com/";
