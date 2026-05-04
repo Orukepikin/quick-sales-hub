@@ -22,11 +22,16 @@ import * as ImagePicker from "expo-image-picker";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import {
   authApi,
+  adminApi,
   chatApi,
   clearStoredToken,
+  Conversation,
+  driverApi,
+  DriverVerificationInput,
   getStoredToken,
   Listing,
   listingsApi,
+  Message,
   notificationsApi,
   NotificationItem,
   setStoredToken,
@@ -35,7 +40,7 @@ import {
 } from "./src/api";
 import { categories, colors, formatPrice, nigeriaStates, toWhatsappUrl } from "./src/constants";
 
-type Screen = "home" | "post" | "messages" | "alerts" | "profile";
+type Screen = "home" | "post" | "messages" | "alerts" | "profile" | "driver" | "admin";
 type AuthMode = "login" | "signup";
 
 export default function App() {
@@ -52,6 +57,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [listings, setListings] = useState<Listing[]>([]);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [messageListing, setMessageListing] = useState<Listing | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -249,14 +255,24 @@ export default function App() {
           />
         )}
         {screen === "post" && <PostScreen onPosted={async () => { setScreen("home"); await loadListings(); }} />}
-        {screen === "messages" && <MessagesScreen />}
+        {screen === "messages" && <MessagesScreen user={user} initialListing={messageListing} onInitialHandled={() => setMessageListing(null)} />}
         {screen === "alerts" && <AlertsScreen notifications={notifications} onRefresh={loadNotifications} />}
         {screen === "profile" && <ProfileScreen user={user} onUser={setUser} onLogout={logout} />}
+        {screen === "driver" && <DriverScreen user={user} onUser={setUser} />}
+        {screen === "admin" && <AdminScreen />}
       </View>
 
-      <TabBar active={screen} onChange={setScreen} />
+      <TabBar active={screen} user={user} onChange={setScreen} />
 
-      <ListingModal listing={selectedListing} onClose={() => setSelectedListing(null)} />
+      <ListingModal
+        listing={selectedListing}
+        onClose={() => setSelectedListing(null)}
+        onMessage={(listing) => {
+          setSelectedListing(null);
+          setMessageListing(listing);
+          setScreen("messages");
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -305,7 +321,15 @@ function ListingCard({ listing, onPress }: { listing: Listing; onPress: () => vo
   );
 }
 
-function ListingModal({ listing, onClose }: { listing: Listing | null; onClose: () => void }) {
+function ListingModal({
+  listing,
+  onClose,
+  onMessage,
+}: {
+  listing: Listing | null;
+  onClose: () => void;
+  onMessage: (listing: Listing) => void;
+}) {
   if (!listing) return null;
   const whatsAppUrl = toWhatsappUrl(listing.seller?.phone);
 
@@ -335,6 +359,7 @@ function ListingModal({ listing, onClose }: { listing: Listing | null; onClose: 
             <Text style={styles.meta}>{listing.seller?.isVerified ? "Verified seller" : "Seller"}</Text>
           </View>
           <PrimaryButton title="Contact on WhatsApp" onPress={contactSeller} />
+          <SecondaryButton title="Message in App" onPress={() => onMessage(listing)} />
           <SecondaryButton title="Close" onPress={onClose} />
         </ScrollView>
       </SafeAreaView>
@@ -454,26 +479,177 @@ function SelectRow({
   );
 }
 
-function MessagesScreen() {
+function MessagesScreen({
+  user,
+  initialListing,
+  onInitialHandled,
+}: {
+  user: User;
+  initialListing: Listing | null;
+  onInitialHandled: () => void;
+}) {
   const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("Messages will appear here when buyers and sellers chat.");
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [active, setActive] = useState<Conversation | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        setBusy(true);
-        const data = await chatApi.getConversations();
-        setMessage(data.conversations?.length ? `${data.conversations.length} conversation(s)` : "No conversations yet.");
-      } catch (error: any) {
-        setMessage(error.message || "Could not load messages.");
-      } finally {
-        setBusy(false);
-      }
-    };
-    load();
+  const otherParticipant = (conversation: Conversation) =>
+    conversation.participants.find((participant) => participant.user.id !== user.id)?.user;
+
+  const loadConversations = useCallback(async () => {
+    setBusy(true);
+    try {
+      const data = await chatApi.getConversations();
+      setConversations(data.conversations || []);
+    } catch (error: any) {
+      Alert.alert("Could not load messages", error.message || "Please try again.");
+    } finally {
+      setBusy(false);
+    }
   }, []);
 
-  return <EmptyState title="Messages" body={busy ? "Loading conversations..." : message} />;
+  const openConversation = async (conversation: Conversation) => {
+    setActive(conversation);
+    try {
+      const data = await chatApi.getMessages(conversation.id);
+      setMessages(data.messages || []);
+    } catch (error: any) {
+      Alert.alert("Could not open chat", error.message || "Please try again.");
+    }
+  };
+
+  useEffect(() => {
+    loadConversations();
+  }, [loadConversations]);
+
+  useEffect(() => {
+    if (!initialListing) return;
+    const receiverId = initialListing.seller?.id || initialListing.sellerId;
+    if (!receiverId || receiverId === user.id) {
+      Alert.alert("Message unavailable", "You cannot message yourself for this listing.");
+      onInitialHandled();
+      return;
+    }
+    setActive({
+      id: "",
+      listing: {
+        id: initialListing.id,
+        title: initialListing.title,
+        price: initialListing.price,
+        images: initialListing.images,
+      },
+      participants: [
+        { user: { id: user.id, name: user.name } },
+        { user: { id: receiverId, name: initialListing.seller?.name || "Seller" } },
+      ],
+      messages: [],
+      unreadCount: 0,
+    });
+    setMessages([]);
+    onInitialHandled();
+  }, [initialListing, onInitialHandled, user]);
+
+  const send = async () => {
+    if (!active || !draft.trim()) return;
+    const receiver = otherParticipant(active);
+    if (!receiver) {
+      Alert.alert("No receiver", "This conversation is missing a seller or buyer.");
+      return;
+    }
+
+    try {
+      setSending(true);
+      const data = await chatApi.sendMessage({
+        receiverId: receiver.id,
+        content: draft.trim(),
+        listingId: active.listing?.id,
+        conversationId: active.id || undefined,
+      });
+      setDraft("");
+      if (active.id) {
+        const refreshed = await chatApi.getMessages(active.id);
+        setMessages(refreshed.messages || []);
+      } else {
+        const conversationData = await chatApi.getConversations();
+        setConversations(conversationData.conversations || []);
+        const created = conversationData.conversations.find((item) => item.id === data.conversationId);
+        if (created) setActive(created);
+        setMessages([data.message]);
+      }
+    } catch (error: any) {
+      Alert.alert("Could not send", error.message || "Please try again.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  if (active) {
+    const receiver = otherParticipant(active);
+    return (
+      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
+        <View style={styles.chatHeader}>
+          <Pressable onPress={() => { setActive(null); setMessages([]); loadConversations(); }}>
+            <Text style={styles.linkText}>Back</Text>
+          </Pressable>
+          <View style={styles.flex}>
+            <Text style={styles.chatTitle}>{receiver?.name || "Conversation"}</Text>
+            <Text style={styles.meta}>{active.listing?.title || "Direct message"}</Text>
+          </View>
+        </View>
+        <FlatList
+          data={messages}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.messagesList}
+          renderItem={({ item }) => {
+            const mine = item.senderId === user.id;
+            return (
+              <View style={[styles.messageBubble, mine ? styles.messageMine : styles.messageTheirs]}>
+                <Text style={[styles.messageText, mine && styles.messageTextMine]}>{item.content}</Text>
+              </View>
+            );
+          }}
+          ListEmptyComponent={<EmptyState title="Start the chat" body="Send a message about this listing." />}
+        />
+        <View style={styles.composer}>
+          <TextInput
+            value={draft}
+            onChangeText={setDraft}
+            placeholder="Write a message..."
+            style={[styles.input, styles.composerInput]}
+          />
+          <Pressable onPress={send} disabled={sending} style={[styles.sendButton, sending && styles.disabled]}>
+            <Text style={styles.sendButtonText}>Send</Text>
+          </Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    );
+  }
+
+  return (
+    <FlatList
+      data={conversations}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.listContent}
+      onRefresh={loadConversations}
+      refreshing={busy}
+      ListHeaderComponent={<Text style={styles.sectionTitle}>Messages</Text>}
+      renderItem={({ item }) => {
+        const receiver = otherParticipant(item);
+        const last = item.messages?.[0]?.content || "No messages yet";
+        return (
+          <Pressable onPress={() => openConversation(item)} style={styles.notificationCard}>
+            <Text style={styles.cardTitle}>{receiver?.name || "Conversation"}</Text>
+            <Text style={styles.meta}>{item.listing?.title || "Direct message"}</Text>
+            <Text style={styles.meta}>{last}</Text>
+            {item.unreadCount > 0 && <Text style={styles.unreadText}>{item.unreadCount} unread</Text>}
+          </Pressable>
+        );
+      }}
+      ListEmptyComponent={<EmptyState title="No conversations" body="Open a listing and tap Message in App to start chatting." />}
+    />
+  );
 }
 
 function AlertsScreen({ notifications, onRefresh }: { notifications: NotificationItem[]; onRefresh: () => Promise<void> }) {
@@ -534,7 +710,175 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
   );
 }
 
-function TabBar({ active, onChange }: { active: Screen; onChange: (screen: Screen) => void }) {
+function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => void }) {
+  const [status, setStatus] = useState("not_submitted");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [form, setForm] = useState<DriverVerificationInput>({
+    fullName: user.name || "",
+    phone: user.phone || "",
+    address: user.location || "",
+    vehicleType: "",
+    plateNumber: "",
+    driversLicense: "",
+    vehicleInsurance: "",
+    selfie: "",
+  });
+
+  const loadStatus = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await driverApi.getVerification();
+      setStatus(data.status);
+    } catch (error: any) {
+      Alert.alert("Driver status unavailable", error.message || "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadStatus();
+  }, [loadStatus]);
+
+  const pickDocument = async (field: keyof DriverVerificationInput) => {
+    const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert("Permission needed", "Allow photo access to upload verification files.");
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      base64: true,
+      quality: 0.75,
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    });
+    if (result.canceled) return;
+    const asset = result.assets[0];
+    const value = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
+    setForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const submit = async () => {
+    const required = ["fullName", "phone", "address", "vehicleType", "plateNumber", "driversLicense", "selfie"] as const;
+    const missing = required.find((field) => !form[field]);
+    if (missing) {
+      Alert.alert("Missing details", "Please complete all required driver verification fields.");
+      return;
+    }
+
+    try {
+      setSubmitting(true);
+      await driverApi.submitVerification(form);
+      setStatus("pending");
+      onUser({ ...user, role: "DRIVER", isVerified: false, phone: form.phone });
+      Alert.alert("Submitted", "Your driver verification is pending approval.");
+    } catch (error: any) {
+      Alert.alert("Could not submit", error.message || "Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) return <EmptyState title="Driver verification" body="Checking your verification status..." />;
+
+  return (
+    <ScrollView contentContainerStyle={styles.formContent}>
+      <Text style={styles.sectionTitle}>Driver Verification</Text>
+      <Text style={styles.sectionText}>
+        Status: {status === "approved" ? "Approved" : status === "pending" ? "Pending review" : "Not submitted"}
+      </Text>
+      {status === "approved" && <EmptyState title="Access approved" body="You can receive driver jobs when logistics features are available." />}
+      {status !== "approved" && (
+        <>
+          <TextInput style={styles.input} placeholder="Full legal name" value={form.fullName} onChangeText={(fullName) => setForm((p) => ({ ...p, fullName }))} />
+          <TextInput style={styles.input} placeholder="Phone number" value={form.phone} keyboardType="phone-pad" onChangeText={(phone) => setForm((p) => ({ ...p, phone }))} />
+          <TextInput style={styles.input} placeholder="Residential address" value={form.address} onChangeText={(address) => setForm((p) => ({ ...p, address }))} />
+          <TextInput style={styles.input} placeholder="Vehicle type" value={form.vehicleType} onChangeText={(vehicleType) => setForm((p) => ({ ...p, vehicleType }))} />
+          <TextInput style={styles.input} placeholder="Plate number" value={form.plateNumber} onChangeText={(plateNumber) => setForm((p) => ({ ...p, plateNumber }))} />
+          <Pressable onPress={() => pickDocument("driversLicense")} style={styles.photoButton}>
+            <Text style={styles.photoButtonText}>{form.driversLicense ? "Driver license added" : "Upload driver license"}</Text>
+          </Pressable>
+          <Pressable onPress={() => pickDocument("vehicleInsurance")} style={styles.photoButton}>
+            <Text style={styles.photoButtonText}>{form.vehicleInsurance ? "Insurance added" : "Upload vehicle insurance (optional)"}</Text>
+          </Pressable>
+          <Pressable onPress={() => pickDocument("selfie")} style={styles.photoButton}>
+            <Text style={styles.photoButtonText}>{form.selfie ? "Selfie added" : "Upload selfie with ID"}</Text>
+          </Pressable>
+          <PrimaryButton title={submitting ? "Submitting..." : "Submit for Approval"} onPress={submit} disabled={submitting} />
+        </>
+      )}
+    </ScrollView>
+  );
+}
+
+function AdminScreen() {
+  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<Awaited<ReturnType<typeof adminApi.getStats>> | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true);
+      const stats = await adminApi.getStats();
+      setData(stats);
+    } catch (error: any) {
+      Alert.alert("Admin unavailable", error.message || "Only admins can view this screen.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  if (loading) return <EmptyState title="Admin" body="Loading admin dashboard..." />;
+  if (!data) return <EmptyState title="Admin" body="Admin stats are unavailable for this account." />;
+
+  const statRows = [
+    ["Users", data.stats.totalUsers],
+    ["Listings", data.stats.totalListings],
+    ["Active listings", data.stats.activeListings],
+    ["Orders", data.stats.totalOrders],
+    ["Revenue", formatPrice(data.stats.totalRevenue)],
+    ["Disputes", data.stats.pendingDisputes],
+    ["New users this week", data.stats.newUsersThisWeek],
+    ["New listings this week", data.stats.newListingsThisWeek],
+  ];
+
+  return (
+    <FlatList
+      data={data.recentOrders}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.listContent}
+      onRefresh={load}
+      refreshing={loading}
+      ListHeaderComponent={
+        <>
+          <Text style={styles.sectionTitle}>Admin</Text>
+          <View style={styles.statsGrid}>
+            {statRows.map(([label, value]) => (
+              <View key={String(label)} style={styles.statCard}>
+                <Text style={styles.meta}>{label}</Text>
+                <Text style={styles.statValue}>{value}</Text>
+              </View>
+            ))}
+          </View>
+          <Text style={styles.sectionTitle}>Recent Orders</Text>
+        </>
+      }
+      renderItem={({ item }) => (
+        <View style={styles.notificationCard}>
+          <Text style={styles.cardTitle}>{item.listing?.title || "Order"}</Text>
+          <Text style={styles.meta}>{formatPrice(item.amount)} • {item.status}</Text>
+          <Text style={styles.meta}>Buyer: {item.buyer?.name || "Buyer"} • Seller: {item.seller?.name || "Seller"}</Text>
+        </View>
+      )}
+      ListEmptyComponent={<EmptyState title="No recent orders" body="Orders will appear here." />}
+    />
+  );
+}
+
+function TabBar({ active, user, onChange }: { active: Screen; user: User; onChange: (screen: Screen) => void }) {
   const tabs: Array<[Screen, string]> = [
     ["home", "Browse"],
     ["post", "Post"],
@@ -542,6 +886,8 @@ function TabBar({ active, onChange }: { active: Screen; onChange: (screen: Scree
     ["alerts", "Alerts"],
     ["profile", "Profile"],
   ];
+  if (user.role === "DRIVER" || user.role === "ADMIN") tabs.splice(4, 0, ["driver", "Driver"]);
+  if (user.role === "ADMIN") tabs.push(["admin", "Admin"]);
   return (
     <View style={styles.tabBar}>
       {tabs.map(([key, label]) => (
@@ -957,6 +1303,105 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     color: colors.ink,
     fontWeight: "800",
+  },
+  chatHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  linkText: {
+    color: colors.blue,
+    fontWeight: "900",
+    fontSize: 15,
+  },
+  chatTitle: {
+    color: colors.ink,
+    fontWeight: "900",
+    fontSize: 18,
+  },
+  messagesList: {
+    padding: 16,
+    paddingBottom: 20,
+  },
+  messageBubble: {
+    maxWidth: "82%",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginBottom: 8,
+  },
+  messageMine: {
+    alignSelf: "flex-end",
+    backgroundColor: colors.blue,
+  },
+  messageTheirs: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+  },
+  messageText: {
+    color: colors.ink,
+    fontSize: 15,
+    lineHeight: 21,
+  },
+  messageTextMine: {
+    color: colors.white,
+  },
+  composer: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    padding: 10,
+    backgroundColor: colors.white,
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+  },
+  composerInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  sendButton: {
+    minHeight: 54,
+    paddingHorizontal: 18,
+    borderRadius: 14,
+    backgroundColor: colors.blue,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sendButtonText: {
+    color: colors.white,
+    fontWeight: "900",
+  },
+  unreadText: {
+    color: colors.blue,
+    fontWeight: "900",
+    marginTop: 6,
+  },
+  statsGrid: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 10,
+    marginBottom: 22,
+  },
+  statCard: {
+    width: "48%",
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 16,
+    padding: 14,
+  },
+  statValue: {
+    marginTop: 6,
+    color: colors.ink,
+    fontSize: 20,
+    fontWeight: "900",
   },
   disabled: {
     opacity: 0.6,

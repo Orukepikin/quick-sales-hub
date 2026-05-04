@@ -43,9 +43,12 @@ For a local development build, use Expo/Android Studio after installing the Andr
 - Post listings with native image picker
 - Edit profile and contact details
 - View notifications
+- Full in-app message conversations
+- Driver verification submission and approval status
+- Admin stats and recent orders for admin accounts
 - Native tab navigation
 
-Google sign-in should be implemented with native OAuth credentials before Play Store release.
+Google sign-in should be implemented with native OAuth credentials before Play Store release. Email/password login is available now.
 
 ## Web App
 

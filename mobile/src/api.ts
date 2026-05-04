@@ -77,14 +77,30 @@ export const uploadApi = {
 };
 
 export const chatApi = {
-  getConversations: () => apiClient<{ conversations: unknown[] }>("/api/chat"),
-  sendMessage: (body: { receiverId: string; content: string; listingId?: string }) =>
-    apiClient("/api/chat", { method: "POST", body }),
+  getConversations: () => apiClient<{ conversations: Conversation[] }>("/api/chat"),
+  getMessages: (conversationId: string) =>
+    apiClient<{ messages: Message[] }>(`/api/chat/${conversationId}`),
+  sendMessage: (body: {
+    receiverId: string;
+    content: string;
+    listingId?: string;
+    conversationId?: string;
+  }) => apiClient<{ message: Message; conversationId: string }>("/api/chat", { method: "POST", body }),
 };
 
 export const notificationsApi = {
   getAll: () => apiClient<{ notifications: NotificationItem[] }>("/api/notifications"),
   markRead: (id: string) => apiClient("/api/notifications", { method: "PATCH", body: { id } }),
+};
+
+export const driverApi = {
+  getVerification: () => apiClient<DriverVerificationStatus>("/api/driver/verification"),
+  submitVerification: (body: DriverVerificationInput) =>
+    apiClient<{ status: string }>("/api/driver/verification", { method: "POST", body }),
+};
+
+export const adminApi = {
+  getStats: () => apiClient<AdminStatsResponse>("/api/admin"),
 };
 
 export type User = {
@@ -125,4 +141,87 @@ export type NotificationItem = {
   body: string;
   isRead: boolean;
   createdAt: string;
+};
+
+export type Conversation = {
+  id: string;
+  listing?: {
+    id: string;
+    title: string;
+    price: number;
+    images?: string[];
+  } | null;
+  participants: Array<{
+    user: {
+      id: string;
+      name: string;
+      avatar?: string | null;
+      isVerified?: boolean;
+    };
+  }>;
+  messages: Array<{
+    content: string;
+    createdAt: string;
+    senderId: string;
+    isRead: boolean;
+  }>;
+  unreadCount: number;
+  updatedAt?: string;
+};
+
+export type Message = {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  receiverId: string;
+  content: string;
+  isRead: boolean;
+  createdAt: string;
+  sender?: {
+    id: string;
+    name: string;
+    avatar?: string | null;
+  };
+};
+
+export type DriverVerificationStatus = {
+  status: "approved" | "pending" | "not_submitted";
+  isVerified: boolean;
+  details: string;
+};
+
+export type DriverVerificationInput = {
+  fullName: string;
+  phone: string;
+  address: string;
+  vehicleType: string;
+  plateNumber: string;
+  driversLicense: string;
+  vehicleInsurance?: string;
+  selfie: string;
+};
+
+export type AdminStatsResponse = {
+  stats: {
+    totalUsers: number;
+    totalListings: number;
+    activeListings: number;
+    totalOrders: number;
+    totalRevenue: number;
+    pendingDisputes: number;
+    newUsersThisWeek: number;
+    newListingsThisWeek: number;
+  };
+  recentOrders: Array<{
+    id: string;
+    amount: number;
+    status: string;
+    listing?: { title: string };
+    buyer?: { name: string };
+    seller?: { name: string };
+  }>;
+  roleDistribution: Array<{
+    role: string;
+    _count: number;
+  }>;
 };
