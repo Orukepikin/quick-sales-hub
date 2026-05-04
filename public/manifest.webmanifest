@@ -1,0 +1,19 @@
+{
+  "name": "Quick Sales Hub",
+  "short_name": "QSH",
+  "description": "Buy, sell, chat, and arrange delivery across Nigeria.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#f9fafb",
+  "theme_color": "#2f3cff",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icons/qsh-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Toaster } from "react-hot-toast";
 import "./globals.css";
 
@@ -21,6 +21,15 @@ export const metadata: Metadata = {
     description: "Post. Sell. Deliver - In Minutes.",
     type: "website",
   },
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icons/qsh-icon.svg",
+    apple: "/icons/qsh-icon.svg",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#2f3cff",
 };
 
 export default function RootLayout({
