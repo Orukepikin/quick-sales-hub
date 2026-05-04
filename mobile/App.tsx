@@ -19,10 +19,10 @@ import {
   View,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as WebBrowser from "expo-web-browser";
 import { StatusBar as ExpoStatusBar } from "expo-status-bar";
 import {
   authApi,
-  adminApi,
   chatApi,
   clearStoredToken,
   Conversation,
@@ -39,9 +39,13 @@ import {
   User,
 } from "./src/api";
 import { categories, colors, formatPrice, nigeriaStates, toWhatsappUrl } from "./src/constants";
+import { supabase } from "./src/supabase";
 
-type Screen = "home" | "post" | "messages" | "alerts" | "profile" | "driver" | "admin";
+WebBrowser.maybeCompleteAuthSession();
+
+type Screen = "home" | "post" | "messages" | "alerts" | "profile" | "driver";
 type AuthMode = "login" | "signup";
+const OAUTH_REDIRECT_URL = "quicksalehub://auth-callback";
 
 export default function App() {
   const [booting, setBooting] = useState(true);
@@ -125,6 +129,53 @@ export default function App() {
     }
   };
 
+  const authenticateWithGoogle = async () => {
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: OAUTH_REDIRECT_URL,
+          skipBrowserRedirect: true,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+
+      if (error) throw error;
+      if (!data.url) throw new Error("Google sign-in could not start.");
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_URL);
+      if (result.type !== "success") throw new Error("Google sign-in was cancelled.");
+
+      const paramsText = result.url.includes("#")
+        ? result.url.split("#")[1]
+        : result.url.split("?")[1] || "";
+      const params = new URLSearchParams(paramsText);
+      const accessToken = params.get("access_token");
+      const refreshToken = params.get("refresh_token");
+      if (!accessToken || !refreshToken) throw new Error("Google did not return a valid session.");
+
+      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+      });
+      if (sessionError) throw sessionError;
+      const supabaseToken = sessionData.session?.access_token || accessToken;
+      const response = await authApi.oauth({ role }, supabaseToken);
+      await setStoredToken(response.token);
+      setUser(response.user);
+      setScreen("home");
+      await loadListings();
+    } catch (error: any) {
+      Alert.alert("Google sign-in failed", error.message || "Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     await clearStoredToken();
     setUser(null);
@@ -166,6 +217,34 @@ export default function App() {
             <Text style={styles.authTitle}>{authMode === "login" ? "Welcome back" : "Create account"}</Text>
             <Text style={styles.authText}>Buy, sell, chat, and arrange delivery across Nigeria.</Text>
 
+            <View style={styles.roleGrid}>
+              {[
+                ["BUYER", "Buyer"],
+                ["SELLER", "Seller"],
+                ["DRIVER", "Driver"],
+              ].map(([value, label]) => (
+                <Pressable
+                  key={value}
+                  onPress={() => setRole(value)}
+                  style={[styles.rolePill, role === value && styles.rolePillActive]}
+                >
+                  <Text style={[styles.roleText, role === value && styles.roleTextActive]}>{label}</Text>
+                </Pressable>
+              ))}
+            </View>
+
+            <PrimaryButton
+              title={loading ? "Please wait..." : "Continue with Google"}
+              onPress={authenticateWithGoogle}
+              disabled={loading}
+            />
+
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>or use email</Text>
+              <View style={styles.dividerLine} />
+            </View>
+
             {authMode === "signup" && (
               <>
                 <TextInput
@@ -181,21 +260,6 @@ export default function App() {
                   keyboardType="phone-pad"
                   style={styles.input}
                 />
-                <View style={styles.roleGrid}>
-                  {[
-                    ["BUYER", "Buyer"],
-                    ["SELLER", "Seller"],
-                    ["DRIVER", "Driver"],
-                  ].map(([value, label]) => (
-                    <Pressable
-                      key={value}
-                      onPress={() => setRole(value)}
-                      style={[styles.rolePill, role === value && styles.rolePillActive]}
-                    >
-                      <Text style={[styles.roleText, role === value && styles.roleTextActive]}>{label}</Text>
-                    </Pressable>
-                  ))}
-                </View>
               </>
             )}
 
@@ -259,7 +323,6 @@ export default function App() {
         {screen === "alerts" && <AlertsScreen notifications={notifications} onRefresh={loadNotifications} />}
         {screen === "profile" && <ProfileScreen user={user} onUser={setUser} onLogout={logout} />}
         {screen === "driver" && <DriverScreen user={user} onUser={setUser} />}
-        {screen === "admin" && <AdminScreen />}
       </View>
 
       <TabBar active={screen} user={user} onChange={setScreen} />
@@ -811,73 +874,6 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
   );
 }
 
-function AdminScreen() {
-  const [loading, setLoading] = useState(true);
-  const [data, setData] = useState<Awaited<ReturnType<typeof adminApi.getStats>> | null>(null);
-
-  const load = useCallback(async () => {
-    try {
-      setLoading(true);
-      const stats = await adminApi.getStats();
-      setData(stats);
-    } catch (error: any) {
-      Alert.alert("Admin unavailable", error.message || "Only admins can view this screen.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  if (loading) return <EmptyState title="Admin" body="Loading admin dashboard..." />;
-  if (!data) return <EmptyState title="Admin" body="Admin stats are unavailable for this account." />;
-
-  const statRows = [
-    ["Users", data.stats.totalUsers],
-    ["Listings", data.stats.totalListings],
-    ["Active listings", data.stats.activeListings],
-    ["Orders", data.stats.totalOrders],
-    ["Revenue", formatPrice(data.stats.totalRevenue)],
-    ["Disputes", data.stats.pendingDisputes],
-    ["New users this week", data.stats.newUsersThisWeek],
-    ["New listings this week", data.stats.newListingsThisWeek],
-  ];
-
-  return (
-    <FlatList
-      data={data.recentOrders}
-      keyExtractor={(item) => item.id}
-      contentContainerStyle={styles.listContent}
-      onRefresh={load}
-      refreshing={loading}
-      ListHeaderComponent={
-        <>
-          <Text style={styles.sectionTitle}>Admin</Text>
-          <View style={styles.statsGrid}>
-            {statRows.map(([label, value]) => (
-              <View key={String(label)} style={styles.statCard}>
-                <Text style={styles.meta}>{label}</Text>
-                <Text style={styles.statValue}>{value}</Text>
-              </View>
-            ))}
-          </View>
-          <Text style={styles.sectionTitle}>Recent Orders</Text>
-        </>
-      }
-      renderItem={({ item }) => (
-        <View style={styles.notificationCard}>
-          <Text style={styles.cardTitle}>{item.listing?.title || "Order"}</Text>
-          <Text style={styles.meta}>{formatPrice(item.amount)} • {item.status}</Text>
-          <Text style={styles.meta}>Buyer: {item.buyer?.name || "Buyer"} • Seller: {item.seller?.name || "Seller"}</Text>
-        </View>
-      )}
-      ListEmptyComponent={<EmptyState title="No recent orders" body="Orders will appear here." />}
-    />
-  );
-}
-
 function TabBar({ active, user, onChange }: { active: Screen; user: User; onChange: (screen: Screen) => void }) {
   const tabs: Array<[Screen, string]> = [
     ["home", "Browse"],
@@ -886,8 +882,7 @@ function TabBar({ active, user, onChange }: { active: Screen; user: User; onChan
     ["alerts", "Alerts"],
     ["profile", "Profile"],
   ];
-  if (user.role === "DRIVER" || user.role === "ADMIN") tabs.splice(4, 0, ["driver", "Driver"]);
-  if (user.role === "ADMIN") tabs.push(["admin", "Admin"]);
+  if (user.role === "DRIVER") tabs.splice(4, 0, ["driver", "Driver"]);
   return (
     <View style={styles.tabBar}>
       {tabs.map(([key, label]) => (
@@ -1025,6 +1020,23 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontWeight: "700",
     marginTop: 18,
+  },
+  dividerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginVertical: 18,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.line,
+  },
+  dividerText: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "800",
+    textTransform: "uppercase",
   },
   header: {
     paddingHorizontal: 18,

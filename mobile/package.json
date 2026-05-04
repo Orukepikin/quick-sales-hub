@@ -10,12 +10,16 @@
     "build:android": "eas build --platform android"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^3.0.2",
+    "@react-native-async-storage/async-storage": "^2.2.0",
+    "@supabase/supabase-js": "^2.105.3",
     "expo": "^55.0.19",
     "expo-image-picker": "^55.0.19",
     "expo-status-bar": "^55.0.5",
+    "expo-system-ui": "^55.0.16",
+    "expo-web-browser": "^55.0.14",
     "react": "^19.2.5",
-    "react-native": "^0.85.2"
+    "react-native": "^0.83.6",
+    "react-native-url-polyfill": "^3.0.0"
   },
   "devDependencies": {
     "@types/react": "^19.2.7",

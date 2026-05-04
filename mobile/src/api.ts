@@ -52,6 +52,8 @@ export const authApi = {
     apiClient<{ token: string; user: User }>("/api/auth/login", { method: "POST", body }),
   signup: (body: { name: string; email: string; password: string; phone?: string; role: string }) =>
     apiClient<{ token: string; user: User }>("/api/auth/signup", { method: "POST", body }),
+  oauth: (body: { role: string }, token: string) =>
+    apiClient<{ token: string; user: User }>("/api/auth/oauth", { method: "POST", body, token }),
   me: () => apiClient<{ user: User }>("/api/auth/me"),
   updateProfile: (body: Partial<User>) =>
     apiClient<{ user: User }>("/api/auth/me", { method: "PATCH", body }),
@@ -97,10 +99,6 @@ export const driverApi = {
   getVerification: () => apiClient<DriverVerificationStatus>("/api/driver/verification"),
   submitVerification: (body: DriverVerificationInput) =>
     apiClient<{ status: string }>("/api/driver/verification", { method: "POST", body }),
-};
-
-export const adminApi = {
-  getStats: () => apiClient<AdminStatsResponse>("/api/admin"),
 };
 
 export type User = {
@@ -199,29 +197,4 @@ export type DriverVerificationInput = {
   driversLicense: string;
   vehicleInsurance?: string;
   selfie: string;
-};
-
-export type AdminStatsResponse = {
-  stats: {
-    totalUsers: number;
-    totalListings: number;
-    activeListings: number;
-    totalOrders: number;
-    totalRevenue: number;
-    pendingDisputes: number;
-    newUsersThisWeek: number;
-    newListingsThisWeek: number;
-  };
-  recentOrders: Array<{
-    id: string;
-    amount: number;
-    status: string;
-    listing?: { title: string };
-    buyer?: { name: string };
-    seller?: { name: string };
-  }>;
-  roleDistribution: Array<{
-    role: string;
-    _count: number;
-  }>;
 };
