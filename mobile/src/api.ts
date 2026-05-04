@@ -112,6 +112,13 @@ export type User = {
   location?: string | null;
   role?: string;
   isVerified?: boolean;
+  rating?: number | null;
+  totalRatings?: number | null;
+  _count?: {
+    listings?: number;
+    buyerOrders?: number;
+    sellerOrders?: number;
+  };
 };
 
 export type Listing = {

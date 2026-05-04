@@ -31,6 +31,7 @@ export const updateProfileSchema = z.object({
   avatar: z.string().url().or(z.literal("")).optional(),
   bio: z.string().max(1000).optional(),
   location: z.string().min(1).max(80).optional(),
+  role: z.enum(["BUYER", "SELLER", "DRIVER"]).optional(),
 });
 
 export const sendMessageSchema = z.object({

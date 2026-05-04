@@ -47,8 +47,15 @@ type Screen = "home" | "post" | "messages" | "alerts" | "saved" | "profile" | "d
 type AuthMode = "login" | "signup";
 const OAUTH_REDIRECT_URL = "quicksalehub://auth-callback";
 const logoSource = require("./assets/icon.png");
+const roleOptions = [
+  ["BUYER", "Buyer"],
+  ["SELLER", "Seller"],
+  ["DRIVER", "Driver"],
+];
 
 const categoryName = (id?: string) => categories.find((item) => item.id === id)?.name || id || "General";
+const roleName = (role?: string) =>
+  roleOptions.find(([value]) => value === role)?.[1] || "Buyer";
 const shortDate = (value?: string) => {
   if (!value) return "Just now";
   const date = new Date(value);
@@ -260,11 +267,7 @@ export default function App() {
             <Text style={styles.authText}>Buy, sell, chat, and arrange delivery across Nigeria.</Text>
 
             <View style={styles.roleGrid}>
-              {[
-                ["BUYER", "Buyer"],
-                ["SELLER", "Seller"],
-                ["DRIVER", "Driver"],
-              ].map(([value, label]) => (
+              {roleOptions.map(([value, label]) => (
                 <Pressable
                   key={value}
                   onPress={() => setRole(value)}
@@ -406,17 +409,19 @@ function AppHeader({
   return (
     <View style={styles.topShell}>
       <View style={styles.blueBar}>
-        <View style={styles.urlPill}>
-          <Text style={styles.urlText}>quicksalehub.com</Text>
+        <View style={styles.nativeBrand}>
+          <Image source={logoSource} style={styles.nativeBrandLogo} />
+          <View>
+            <Text style={styles.nativeBrandText}>Quick Sales Hub</Text>
+            <Text style={styles.nativeBrandSub}>{roleLabel}</Text>
+          </View>
         </View>
         <Pressable onPress={onAlerts} style={styles.topIconButton}>
-          <Text style={styles.topIconText}>!</Text>
+          <Text style={styles.topIconText}>N</Text>
           {unreadCount > 0 && <Text style={styles.badgeCount}>{unreadCount}</Text>}
         </Pressable>
       </View>
-      <Text style={styles.modeText}>{roleLabel}</Text>
       <View style={styles.searchRow}>
-        <Image source={logoSource} style={styles.headerLogo} />
         <TextInput
           value={query}
           onChangeText={onQuery}
@@ -512,18 +517,18 @@ function ListingCard({
           <Image source={{ uri: image }} style={styles.cardImage} resizeMode="cover" />
         ) : (
           <View style={styles.imagePlaceholder}>
-            <Text style={styles.placeholderIcon}>▣</Text>
+            <Text style={styles.placeholderIcon}>BOX</Text>
           </View>
         )}
         <Pressable onPress={onToggleSave} style={styles.heartButton}>
-          <Text style={[styles.heartText, saved && styles.heartTextSaved]}>{saved ? "♥" : "♡"}</Text>
+          <Text style={[styles.heartText, saved && styles.heartTextSaved]}>{saved ? "S" : "+"}</Text>
         </Pressable>
         {listing.images && listing.images.length > 1 && <Text style={styles.imageCount}>1/{listing.images.length}</Text>}
       </View>
       <View style={styles.cardBody}>
         <Text style={styles.price}>{formatPrice(listing.price)}</Text>
         <Text style={styles.cardTitle} numberOfLines={2}>{listing.title}</Text>
-        <Text style={styles.meta}>{listing.location} • {listing.category}</Text>
+        <Text style={styles.meta}>{listing.location} - {categoryName(listing.category)}</Text>
         <Text style={styles.meta} numberOfLines={1}>Seller: {listing.seller?.name || "Seller"}</Text>
       </View>
     </Pressable>
@@ -593,7 +598,7 @@ function ListingModal({
           )}
           <Text style={styles.detailTitle}>{listing.title}</Text>
           <Text style={styles.detailPrice}>{formatPrice(listing.price)}</Text>
-          <Text style={styles.detailMeta}>{listing.location} • {listing.category}</Text>
+          <Text style={styles.detailMeta}>{listing.location} - {categoryName(listing.category)}</Text>
           <Text style={styles.detailDesc}>{listing.description}</Text>
           <View style={styles.sellerBox}>
             <Text style={styles.sellerName}>{listing.seller?.name || "Seller"}</Text>
@@ -673,7 +678,7 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
       <Text style={styles.sectionTitle}>Post an Ad</Text>
       <Text style={styles.selectLabel}>Photos ({images.length}/10)</Text>
       <Pressable onPress={pickImages} style={styles.uploadBox}>
-        <Text style={styles.uploadIcon}>▧</Text>
+        <Text style={styles.uploadIcon}>PHOTO</Text>
         <Text style={styles.uploadTitle}>Click to upload photos</Text>
         <Text style={styles.uploadHelp}>JPG, PNG up to 5MB each. First photo will be the cover image.</Text>
       </Pressable>
@@ -712,16 +717,36 @@ function SelectRow({
   values: string[][];
   onChange: (value: string) => void;
 }) {
+  const [open, setOpen] = useState(false);
+  const selected = values.find(([id]) => id === value)?.[1] || "Select";
   return (
     <View style={styles.selectBlock}>
       <Text style={styles.selectLabel}>{label}</Text>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-        {values.map(([id, name]) => (
-          <Pressable key={id} onPress={() => onChange(id)} style={[styles.selectPill, value === id && styles.selectPillActive]}>
-            <Text style={[styles.selectText, value === id && styles.selectTextActive]}>{name}</Text>
-          </Pressable>
-        ))}
-      </ScrollView>
+      <Pressable onPress={() => setOpen(true)} style={styles.dropdownButton}>
+        <Text style={styles.dropdownValue}>{selected}</Text>
+        <Text style={styles.dropdownChevron}>v</Text>
+      </Pressable>
+      <Modal transparent animationType="fade" visible={open} onRequestClose={() => setOpen(false)}>
+        <Pressable style={styles.dropdownOverlay} onPress={() => setOpen(false)}>
+          <View style={styles.dropdownSheet}>
+            <Text style={styles.dropdownTitle}>{label}</Text>
+            <ScrollView style={styles.dropdownList}>
+              {values.map(([id, name]) => (
+                <Pressable
+                  key={id}
+                  onPress={() => {
+                    onChange(id);
+                    setOpen(false);
+                  }}
+                  style={[styles.dropdownOption, value === id && styles.dropdownOptionActive]}
+                >
+                  <Text style={[styles.dropdownOptionText, value === id && styles.dropdownOptionTextActive]}>{name}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          </View>
+        </Pressable>
+      </Modal>
     </View>
   );
 }
@@ -924,10 +949,15 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
     name: user.name || "",
     phone: user.phone || "",
     whatsapp: user.whatsapp || "",
+    avatar: user.avatar || "",
     bio: user.bio || "",
     location: user.location || "",
+    role: user.role || "BUYER",
   });
   const [saving, setSaving] = useState(false);
+  const listingCount = user._count?.listings || 0;
+  const rating = Number(user.rating || 0);
+  const reviews = user.totalRatings || 0;
 
   const save = async () => {
     try {
@@ -945,26 +975,28 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
   return (
     <ScrollView contentContainerStyle={styles.formContent}>
       <View style={styles.profileCard}>
-        {user.avatar ? (
-          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+        {form.avatar ? (
+          <Image source={{ uri: form.avatar }} style={styles.avatar} />
         ) : (
           <View style={styles.avatarFallback}>
             <Text style={styles.avatarInitial}>{(user.name || "Q").slice(0, 1).toUpperCase()}</Text>
           </View>
         )}
-        <Text style={styles.profileName}>{user.name}</Text>
-        <Text style={styles.sectionText}>{user.email} - {(user.role || "buyer").toLowerCase()}</Text>
+        <Text style={styles.profileName}>{form.name || user.name}</Text>
+        <Text style={styles.sectionText}>{user.email} - {roleName(form.role)}</Text>
         <View style={styles.profileStats}>
-          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Listings</Text></View>
-          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Rating</Text></View>
-          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Reviews</Text></View>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>{listingCount}</Text><Text style={styles.meta}>Listings</Text></View>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>{rating.toFixed(1)}</Text><Text style={styles.meta}>Rating</Text></View>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>{reviews}</Text><Text style={styles.meta}>Reviews</Text></View>
         </View>
         <Text style={styles.selectLabel}>Display Name</Text>
         <TextInput style={styles.input} placeholder="Name" value={form.name} onChangeText={(name) => setForm((p) => ({ ...p, name }))} />
+        <SelectRow label="Switch Role" value={form.role} values={roleOptions} onChange={(role) => setForm((p) => ({ ...p, role }))} />
         <Text style={styles.selectLabel}>WhatsApp Number</Text>
         <TextInput style={styles.input} placeholder="+234 800 000 0000" value={form.whatsapp || form.phone} keyboardType="phone-pad" onChangeText={(whatsapp) => setForm((p) => ({ ...p, whatsapp, phone: whatsapp }))} />
-        <Text style={styles.selectLabel}>State</Text>
-        <TextInput style={styles.input} placeholder="State" value={form.location} onChangeText={(location) => setForm((p) => ({ ...p, location }))} />
+        <SelectRow label="State" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
+        <Text style={styles.selectLabel}>Profile Image URL</Text>
+        <TextInput style={styles.input} placeholder="https://..." value={form.avatar} autoCapitalize="none" onChangeText={(avatar) => setForm((p) => ({ ...p, avatar }))} />
         <Text style={styles.selectLabel}>Bio / Details</Text>
         <TextInput style={[styles.input, styles.textArea]} placeholder="Tell buyers and sellers a little about you." multiline value={form.bio} onChangeText={(bio) => setForm((p) => ({ ...p, bio }))} />
         <PrimaryButton title={saving ? "Saving..." : "Save Profile"} onPress={save} disabled={saving} />
@@ -1089,7 +1121,7 @@ function TabBar({ active, user, onChange }: { active: Screen; user: User; onChan
       {tabs.map(([key, label]) => (
         <Pressable key={key} onPress={() => onChange(key)} style={[styles.tabItem, key === "post" && styles.postTabItem]}>
           <Text style={[styles.tabIcon, key === "post" && styles.postTabIcon, active === key && styles.tabTextActive]}>
-            {key === "home" ? "⌂" : key === "messages" ? "□" : key === "saved" ? "♡" : key === "profile" ? "♙" : key === "driver" ? "▣" : "+"}
+            {key === "home" ? "B" : key === "messages" ? "M" : key === "saved" ? "S" : key === "profile" ? "P" : key === "driver" ? "D" : "+"}
           </Text>
           {key !== "post" && <Text style={[styles.tabText, active === key && styles.tabTextActive]}>{label}</Text>}
         </Pressable>
@@ -1314,25 +1346,36 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.line,
   },
   blueBar: {
-    minHeight: 54,
+    minHeight: 72,
     backgroundColor: colors.blue,
     paddingHorizontal: 18,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
   },
-  urlPill: {
+  nativeBrand: {
     flex: 1,
-    maxWidth: 260,
-    borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.18)",
-    paddingHorizontal: 18,
-    paddingVertical: 10,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    minWidth: 0,
   },
-  urlText: {
+  nativeBrandLogo: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+  },
+  nativeBrandText: {
     color: colors.white,
     fontWeight: "800",
-    fontSize: 16,
+    fontSize: 20,
+  },
+  nativeBrandSub: {
+    color: "#e0e7ff",
+    fontSize: 12,
+    fontWeight: "700",
+    marginTop: 2,
+    flexShrink: 1,
   },
   topIconButton: {
     width: 38,
@@ -1396,7 +1439,7 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 32,
     lineHeight: 39,
-    fontWeight: "900",
+    fontWeight: "800",
   },
   heroYellow: {
     color: colors.yellow,
@@ -1433,7 +1476,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 26,
-    fontWeight: "900",
+    fontWeight: "800",
     color: colors.ink,
     marginBottom: 6,
   },
@@ -1639,7 +1682,8 @@ const styles = StyleSheet.create({
   },
   uploadIcon: {
     color: "#9ca3af",
-    fontSize: 38,
+    fontSize: 18,
+    fontWeight: "800",
     marginBottom: 8,
   },
   uploadTitle: {
@@ -1679,6 +1723,73 @@ const styles = StyleSheet.create({
     fontWeight: "700",
   },
   selectTextActive: {
+    color: colors.white,
+  },
+  dropdownButton: {
+    minHeight: 54,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  dropdownValue: {
+    color: colors.ink,
+    fontSize: 16,
+    flex: 1,
+    marginRight: 8,
+  },
+  dropdownChevron: {
+    color: colors.muted,
+    fontSize: 18,
+    fontWeight: "800",
+  },
+  dropdownOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(17,24,39,0.38)",
+    justifyContent: "flex-end",
+  },
+  dropdownSheet: {
+    maxHeight: "72%",
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 16,
+    paddingTop: 18,
+    paddingBottom: 24,
+  },
+  dropdownTitle: {
+    color: colors.ink,
+    fontSize: 20,
+    fontWeight: "800",
+    marginBottom: 12,
+  },
+  dropdownList: {
+    maxHeight: 440,
+  },
+  dropdownOption: {
+    minHeight: 50,
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    justifyContent: "center",
+    marginBottom: 6,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+  },
+  dropdownOptionActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+  dropdownOptionText: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "700",
+  },
+  dropdownOptionTextActive: {
     color: colors.white,
   },
   photoButton: {

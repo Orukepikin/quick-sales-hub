@@ -15,6 +15,7 @@ export const categories = [
   { id: "phones", name: "Phones & Tablets" },
   { id: "electronics", name: "Electronics" },
   { id: "vehicles", name: "Cars & Vehicles" },
+  { id: "real-estate", name: "Real Estate" },
   { id: "property", name: "Home Property & Apartments" },
   { id: "fashion", name: "Fashion" },
   { id: "jobs", name: "Jobs & Services" },

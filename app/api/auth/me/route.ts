@@ -60,14 +60,31 @@ export async function PATCH(req: NextRequest) {
     const validated = updateProfileSchema.parse(body);
     const whatsapp = validated.whatsapp || validated.phone;
 
+    const current = validated.role
+      ? await prisma.user.findUnique({
+          where: { id: payload.userId },
+          select: { role: true },
+        })
+      : null;
+
     const updated = await prisma.user.update({
       where: { id: payload.userId },
       data: {
         name: validated.name,
         phone: whatsapp,
-        avatar: validated.avatar || null,
+        avatar:
+          validated.avatar === undefined
+            ? undefined
+            : validated.avatar || null,
         bio: validated.bio,
         location: validated.location,
+        role: validated.role as any,
+        isVerified:
+          validated.role === "DRIVER" && current?.role !== "DRIVER"
+            ? false
+            : validated.role && validated.role !== "DRIVER"
+              ? true
+              : undefined,
       },
       select: {
         id: true,
@@ -81,6 +98,13 @@ export async function PATCH(req: NextRequest) {
         isVerified: true,
         rating: true,
         totalRatings: true,
+        _count: {
+          select: {
+            listings: true,
+            buyerOrders: true,
+            sellerOrders: true,
+          },
+        },
       },
     });
 
