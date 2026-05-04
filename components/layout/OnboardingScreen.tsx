@@ -17,6 +17,22 @@ const roleToApi = (role: string | null) => {
   return "BUYER";
 };
 
+const getOAuthRedirectUrl = () => {
+  const configuredUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (configuredUrl) {
+    const withProtocol = configuredUrl.startsWith("http")
+      ? configuredUrl
+      : `https://${configuredUrl}`;
+    return withProtocol.endsWith("/") ? withProtocol : `${withProtocol}/`;
+  }
+
+  if (typeof window !== "undefined") {
+    return `${window.location.origin}/`;
+  }
+
+  return "https://www.quicksalehub.com/";
+};
+
 export default function OnboardingScreen({ onComplete, startOnAuth }: OnboardingScreenProps) {
   const [role, setRole] = useState<string | null>(null);
   const [step, setStep] = useState<"role" | "auth">(startOnAuth ? "auth" : "role");
@@ -43,7 +59,7 @@ export default function OnboardingScreen({ onComplete, startOnAuth }: Onboarding
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.origin,
+          redirectTo: getOAuthRedirectUrl(),
           queryParams: {
             access_type: "offline",
             prompt: "consent",
