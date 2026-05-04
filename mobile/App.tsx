@@ -43,9 +43,21 @@ import { supabase } from "./src/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
 
-type Screen = "home" | "post" | "messages" | "alerts" | "profile" | "driver";
+type Screen = "home" | "post" | "messages" | "alerts" | "saved" | "profile" | "driver";
 type AuthMode = "login" | "signup";
 const OAUTH_REDIRECT_URL = "quicksalehub://auth-callback";
+const logoSource = require("./assets/icon.png");
+
+const categoryName = (id?: string) => categories.find((item) => item.id === id)?.name || id || "General";
+const shortDate = (value?: string) => {
+  if (!value) return "Just now";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Just now";
+  const diffHours = Math.max(0, Math.floor((Date.now() - date.getTime()) / 3600000));
+  if (diffHours < 1) return "Just now";
+  if (diffHours < 24) return `${diffHours}h ago`;
+  return date.toLocaleDateString("en-NG", { day: "2-digit", month: "short", year: "numeric" });
+};
 
 export default function App() {
   const [booting, setBooting] = useState(true);
@@ -63,6 +75,8 @@ export default function App() {
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
   const [messageListing, setMessageListing] = useState<Listing | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [savedIds, setSavedIds] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -103,6 +117,33 @@ export default function App() {
     () => notifications.filter((item) => !item.isRead).length,
     [notifications]
   );
+
+  const visibleListings = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return listings;
+    return listings.filter((listing) =>
+      [listing.title, listing.description, listing.location, categoryName(listing.category), listing.seller?.name]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(query))
+    );
+  }, [listings, searchQuery]);
+
+  const savedListings = useMemo(
+    () => listings.filter((listing) => savedIds.includes(listing.id)),
+    [listings, savedIds]
+  );
+
+  const toggleSave = async (listing: Listing) => {
+    const saved = savedIds.includes(listing.id);
+    setSavedIds((prev) => (saved ? prev.filter((id) => id !== listing.id) : [...prev, listing.id]));
+    try {
+      if (saved) await listingsApi.unsave(listing.id);
+      else await listingsApi.save(listing.id);
+    } catch (error: any) {
+      setSavedIds((prev) => (saved ? [...prev, listing.id] : prev.filter((id) => id !== listing.id)));
+      Alert.alert("Could not update saved", error.message || "Please try again.");
+    }
+  };
 
   const authenticate = async () => {
     try {
@@ -197,9 +238,10 @@ export default function App() {
   if (booting) {
     return (
       <SafeAreaView style={styles.centered}>
-        <ExpoStatusBar style="dark" />
-        <ActivityIndicator color={colors.blue} size="large" />
-        <Text style={styles.loadingText}>Opening Quick Sales Hub</Text>
+        <ExpoStatusBar style="light" backgroundColor={colors.blue} />
+        <Image source={logoSource} style={styles.splashLogo} />
+        <Text style={styles.splashTitle}>Quick Sales Hub</Text>
+        <ActivityIndicator color={colors.yellow} size="large" />
       </SafeAreaView>
     );
   }
@@ -211,7 +253,7 @@ export default function App() {
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
           <ScrollView contentContainerStyle={styles.authWrap}>
             <View style={styles.brandMark}>
-              <Text style={styles.brandQ}>Q</Text>
+              <Image source={logoSource} style={styles.authLogo} />
             </View>
             <Text style={styles.brandTitle}>Quick Sales Hub</Text>
             <Text style={styles.authTitle}>{authMode === "login" ? "Welcome back" : "Create account"}</Text>
@@ -297,30 +339,37 @@ export default function App() {
 
   return (
     <SafeAreaView style={styles.safe}>
-      <ExpoStatusBar style="dark" />
-      <View style={styles.header}>
-        <View>
-          <Text style={styles.logoText}>Quick Sales Hub</Text>
-          <Text style={styles.headerSub}>Hello, {user.name}</Text>
-        </View>
-        <Pressable onPress={() => setScreen("alerts")} style={styles.badgeButton}>
-          <Text style={styles.badgeIcon}>!</Text>
-          {unreadCount > 0 && <Text style={styles.badgeCount}>{unreadCount}</Text>}
-        </Pressable>
-      </View>
+      <ExpoStatusBar style="light" backgroundColor={colors.blue} />
+      <AppHeader
+        user={user}
+        query={searchQuery}
+        unreadCount={unreadCount}
+        onQuery={setSearchQuery}
+        onAlerts={() => setScreen("alerts")}
+      />
 
       <View style={styles.flex}>
         {screen === "home" && (
           <HomeScreen
-            listings={listings}
+            listings={visibleListings}
             refreshing={refreshing}
             onRefresh={refresh}
             onSelect={setSelectedListing}
+            savedIds={savedIds}
+            onToggleSave={toggleSave}
           />
         )}
         {screen === "post" && <PostScreen onPosted={async () => { setScreen("home"); await loadListings(); }} />}
         {screen === "messages" && <MessagesScreen user={user} initialListing={messageListing} onInitialHandled={() => setMessageListing(null)} />}
         {screen === "alerts" && <AlertsScreen notifications={notifications} onRefresh={loadNotifications} />}
+        {screen === "saved" && (
+          <SavedScreen
+            listings={savedListings}
+            onSelect={setSelectedListing}
+            savedIds={savedIds}
+            onToggleSave={toggleSave}
+          />
+        )}
         {screen === "profile" && <ProfileScreen user={user} onUser={setUser} onLogout={logout} />}
         {screen === "driver" && <DriverScreen user={user} onUser={setUser} />}
       </View>
@@ -340,47 +389,176 @@ export default function App() {
   );
 }
 
+function AppHeader({
+  user,
+  query,
+  unreadCount,
+  onQuery,
+  onAlerts,
+}: {
+  user: User;
+  query: string;
+  unreadCount: number;
+  onQuery: (value: string) => void;
+  onAlerts: () => void;
+}) {
+  const roleLabel = user.role === "SELLER" ? "Seller Mode - Upload and sell products" : user.role === "DRIVER" ? "Driver Mode - Verification required" : "Buyer Mode - Browse and purchase items";
+  return (
+    <View style={styles.topShell}>
+      <View style={styles.blueBar}>
+        <View style={styles.urlPill}>
+          <Text style={styles.urlText}>quicksalehub.com</Text>
+        </View>
+        <Pressable onPress={onAlerts} style={styles.topIconButton}>
+          <Text style={styles.topIconText}>!</Text>
+          {unreadCount > 0 && <Text style={styles.badgeCount}>{unreadCount}</Text>}
+        </Pressable>
+      </View>
+      <Text style={styles.modeText}>{roleLabel}</Text>
+      <View style={styles.searchRow}>
+        <Image source={logoSource} style={styles.headerLogo} />
+        <TextInput
+          value={query}
+          onChangeText={onQuery}
+          placeholder="Search phones, cars, fashion..."
+          placeholderTextColor="#9ca3af"
+          style={styles.searchInput}
+          returnKeyType="search"
+        />
+      </View>
+    </View>
+  );
+}
+
 function HomeScreen({
   listings,
   refreshing,
   onRefresh,
   onSelect,
+  savedIds,
+  onToggleSave,
 }: {
   listings: Listing[];
   refreshing: boolean;
   onRefresh: () => void;
   onSelect: (listing: Listing) => void;
+  savedIds: string[];
+  onToggleSave: (listing: Listing) => void;
 }) {
   return (
     <FlatList
       data={listings}
+      numColumns={2}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.listContent}
+      columnWrapperStyle={styles.cardRow}
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      windowSize={7}
+      removeClippedSubviews
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       ListHeaderComponent={
         <>
-          <Text style={styles.sectionTitle}>Marketplace</Text>
-          <Text style={styles.sectionText}>Fresh listings from sellers across Nigeria.</Text>
+          <View style={styles.heroCard}>
+            <Text style={styles.heroTitle}>
+              Buy & Sell{"\n"}<Text style={styles.heroYellow}>Anything</Text>{"\n"}In Minutes.
+            </Text>
+            <Text style={styles.heroText}>
+              Nigeria's fastest growing marketplace. Join thousands buying and selling from phones to fashion.
+            </Text>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
+            <View style={[styles.categoryChip, styles.categoryChipActive]}>
+              <Text style={[styles.categoryChipText, styles.categoryChipTextActive]}>All</Text>
+            </View>
+            {categories.slice(0, 8).map((item) => (
+              <View key={item.id} style={styles.categoryChip}>
+                <Text style={styles.categoryChipText}>{item.name}</Text>
+              </View>
+            ))}
+          </ScrollView>
+          <Text style={styles.sectionTitle}>Featured Listings</Text>
         </>
       }
-      renderItem={({ item }) => <ListingCard listing={item} onPress={() => onSelect(item)} />}
+      renderItem={({ item }) => (
+        <ListingCard
+          listing={item}
+          saved={savedIds.includes(item.id)}
+          onPress={() => onSelect(item)}
+          onToggleSave={() => onToggleSave(item)}
+        />
+      )}
       ListEmptyComponent={<EmptyState title="No listings yet" body="Pull down to refresh or post the first ad." />}
     />
   );
 }
 
-function ListingCard({ listing, onPress }: { listing: Listing; onPress: () => void }) {
+function ListingCard({
+  listing,
+  saved,
+  onPress,
+  onToggleSave,
+}: {
+  listing: Listing;
+  saved?: boolean;
+  onPress: () => void;
+  onToggleSave?: () => void;
+}) {
   const image = listing.images?.[0];
   return (
     <Pressable onPress={onPress} style={styles.card}>
-      {image ? <Image source={{ uri: image }} style={styles.cardImage} /> : <View style={styles.imagePlaceholder} />}
+      <View style={styles.cardMedia}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.cardImage} resizeMode="cover" />
+        ) : (
+          <View style={styles.imagePlaceholder}>
+            <Text style={styles.placeholderIcon}>▣</Text>
+          </View>
+        )}
+        <Pressable onPress={onToggleSave} style={styles.heartButton}>
+          <Text style={[styles.heartText, saved && styles.heartTextSaved]}>{saved ? "♥" : "♡"}</Text>
+        </Pressable>
+        {listing.images && listing.images.length > 1 && <Text style={styles.imageCount}>1/{listing.images.length}</Text>}
+      </View>
       <View style={styles.cardBody}>
-        <Text style={styles.cardTitle}>{listing.title}</Text>
         <Text style={styles.price}>{formatPrice(listing.price)}</Text>
+        <Text style={styles.cardTitle} numberOfLines={2}>{listing.title}</Text>
         <Text style={styles.meta}>{listing.location} • {listing.category}</Text>
-        <Text style={styles.meta}>Seller: {listing.seller?.name || "Seller"}</Text>
+        <Text style={styles.meta} numberOfLines={1}>Seller: {listing.seller?.name || "Seller"}</Text>
       </View>
     </Pressable>
+  );
+}
+
+function SavedScreen({
+  listings,
+  onSelect,
+  savedIds,
+  onToggleSave,
+}: {
+  listings: Listing[];
+  onSelect: (listing: Listing) => void;
+  savedIds: string[];
+  onToggleSave: (listing: Listing) => void;
+}) {
+  return (
+    <FlatList
+      data={listings}
+      numColumns={2}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.listContent}
+      columnWrapperStyle={styles.cardRow}
+      ListHeaderComponent={<Text style={styles.sectionTitle}>Saved Listings</Text>}
+      renderItem={({ item }) => (
+        <ListingCard
+          listing={item}
+          saved={savedIds.includes(item.id)}
+          onPress={() => onSelect(item)}
+          onToggleSave={() => onToggleSave(item)}
+        />
+      )}
+      ListEmptyComponent={<EmptyState title="No saved listings" body="Tap the heart on listings you want to keep." />}
+    />
   );
 }
 
@@ -492,27 +670,33 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
 
   return (
     <ScrollView contentContainerStyle={styles.formContent}>
-      <Text style={styles.sectionTitle}>Post an ad</Text>
-      <TextInput style={styles.input} placeholder="Title" value={form.title} onChangeText={(title) => setForm((p) => ({ ...p, title }))} />
-      <TextInput style={styles.input} placeholder="Price" value={form.price} keyboardType="numeric" onChangeText={(price) => setForm((p) => ({ ...p, price }))} />
-      <SelectRow label="Category" value={form.category} values={categories.map((item) => [item.id, item.name])} onChange={(category) => setForm((p) => ({ ...p, category }))} />
-      <SelectRow label="Location" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
-      <TextInput
-        style={[styles.input, styles.textArea]}
-        placeholder="Description"
-        multiline
-        value={form.description}
-        onChangeText={(description) => setForm((p) => ({ ...p, description }))}
-      />
-      <Pressable onPress={pickImages} style={styles.photoButton}>
-        <Text style={styles.photoButtonText}>Add photos ({images.length}/10)</Text>
+      <Text style={styles.sectionTitle}>Post an Ad</Text>
+      <Text style={styles.selectLabel}>Photos ({images.length}/10)</Text>
+      <Pressable onPress={pickImages} style={styles.uploadBox}>
+        <Text style={styles.uploadIcon}>▧</Text>
+        <Text style={styles.uploadTitle}>Click to upload photos</Text>
+        <Text style={styles.uploadHelp}>JPG, PNG up to 5MB each. First photo will be the cover image.</Text>
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
         {images.map((uri, index) => (
           <Image key={`${uri}-${index}`} source={{ uri }} style={styles.thumb} />
         ))}
       </ScrollView>
-      <PrimaryButton title={posting ? "Posting..." : "Post Ad"} onPress={submit} disabled={posting} />
+      <Text style={styles.selectLabel}>Title *</Text>
+      <TextInput style={styles.input} placeholder="e.g. iPhone 15 Pro Max 256GB - Brand New" value={form.title} onChangeText={(title) => setForm((p) => ({ ...p, title }))} />
+      <SelectRow label="Category" value={form.category} values={categories.map((item) => [item.id, item.name])} onChange={(category) => setForm((p) => ({ ...p, category }))} />
+      <Text style={styles.selectLabel}>Price (NGN) *</Text>
+      <TextInput style={styles.input} placeholder="e.g. 450000" value={form.price} keyboardType="numeric" onChangeText={(price) => setForm((p) => ({ ...p, price }))} />
+      <SelectRow label="Location" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
+      <Text style={styles.selectLabel}>Description *</Text>
+      <TextInput
+        style={[styles.input, styles.textArea]}
+        placeholder="Describe your item in detail - condition, features, reason for selling, etc."
+        multiline
+        value={form.description}
+        onChangeText={(description) => setForm((p) => ({ ...p, description }))}
+      />
+      <PrimaryButton title={posting ? "Posting..." : "Post Ad - It's Free!"} onPress={submit} disabled={posting} />
     </ScrollView>
   );
 }
@@ -760,14 +944,31 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
 
   return (
     <ScrollView contentContainerStyle={styles.formContent}>
-      <Text style={styles.sectionTitle}>Profile</Text>
-      <Text style={styles.sectionText}>{user.email}</Text>
-      <TextInput style={styles.input} placeholder="Name" value={form.name} onChangeText={(name) => setForm((p) => ({ ...p, name }))} />
-      <TextInput style={styles.input} placeholder="Phone" value={form.phone} keyboardType="phone-pad" onChangeText={(phone) => setForm((p) => ({ ...p, phone }))} />
-      <TextInput style={styles.input} placeholder="WhatsApp" value={form.whatsapp} keyboardType="phone-pad" onChangeText={(whatsapp) => setForm((p) => ({ ...p, whatsapp }))} />
-      <TextInput style={styles.input} placeholder="Location" value={form.location} onChangeText={(location) => setForm((p) => ({ ...p, location }))} />
-      <TextInput style={[styles.input, styles.textArea]} placeholder="Bio" multiline value={form.bio} onChangeText={(bio) => setForm((p) => ({ ...p, bio }))} />
-      <PrimaryButton title={saving ? "Saving..." : "Save Profile"} onPress={save} disabled={saving} />
+      <View style={styles.profileCard}>
+        {user.avatar ? (
+          <Image source={{ uri: user.avatar }} style={styles.avatar} />
+        ) : (
+          <View style={styles.avatarFallback}>
+            <Text style={styles.avatarInitial}>{(user.name || "Q").slice(0, 1).toUpperCase()}</Text>
+          </View>
+        )}
+        <Text style={styles.profileName}>{user.name}</Text>
+        <Text style={styles.sectionText}>{user.email} - {(user.role || "buyer").toLowerCase()}</Text>
+        <View style={styles.profileStats}>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Listings</Text></View>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Rating</Text></View>
+          <View style={styles.profileStat}><Text style={styles.profileStatValue}>0</Text><Text style={styles.meta}>Reviews</Text></View>
+        </View>
+        <Text style={styles.selectLabel}>Display Name</Text>
+        <TextInput style={styles.input} placeholder="Name" value={form.name} onChangeText={(name) => setForm((p) => ({ ...p, name }))} />
+        <Text style={styles.selectLabel}>WhatsApp Number</Text>
+        <TextInput style={styles.input} placeholder="+234 800 000 0000" value={form.whatsapp || form.phone} keyboardType="phone-pad" onChangeText={(whatsapp) => setForm((p) => ({ ...p, whatsapp, phone: whatsapp }))} />
+        <Text style={styles.selectLabel}>State</Text>
+        <TextInput style={styles.input} placeholder="State" value={form.location} onChangeText={(location) => setForm((p) => ({ ...p, location }))} />
+        <Text style={styles.selectLabel}>Bio / Details</Text>
+        <TextInput style={[styles.input, styles.textArea]} placeholder="Tell buyers and sellers a little about you." multiline value={form.bio} onChangeText={(bio) => setForm((p) => ({ ...p, bio }))} />
+        <PrimaryButton title={saving ? "Saving..." : "Save Profile"} onPress={save} disabled={saving} />
+      </View>
       <SecondaryButton title="Log Out" onPress={onLogout} />
     </ScrollView>
   );
@@ -876,18 +1077,21 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
 
 function TabBar({ active, user, onChange }: { active: Screen; user: User; onChange: (screen: Screen) => void }) {
   const tabs: Array<[Screen, string]> = [
-    ["home", "Browse"],
-    ["post", "Post"],
-    ["messages", "Messages"],
-    ["alerts", "Alerts"],
+    ["home", "Home"],
+    ["messages", "Chat"],
+    ["post", "+"],
+    ["saved", "Saved"],
     ["profile", "Profile"],
   ];
   if (user.role === "DRIVER") tabs.splice(4, 0, ["driver", "Driver"]);
   return (
     <View style={styles.tabBar}>
       {tabs.map(([key, label]) => (
-        <Pressable key={key} onPress={() => onChange(key)} style={styles.tabItem}>
-          <Text style={[styles.tabText, active === key && styles.tabTextActive]}>{label}</Text>
+        <Pressable key={key} onPress={() => onChange(key)} style={[styles.tabItem, key === "post" && styles.postTabItem]}>
+          <Text style={[styles.tabIcon, key === "post" && styles.postTabIcon, active === key && styles.tabTextActive]}>
+            {key === "home" ? "⌂" : key === "messages" ? "□" : key === "saved" ? "♡" : key === "profile" ? "♙" : key === "driver" ? "▣" : "+"}
+          </Text>
+          {key !== "post" && <Text style={[styles.tabText, active === key && styles.tabTextActive]}>{label}</Text>}
         </Pressable>
       ))}
     </View>
@@ -930,7 +1134,19 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: colors.bg,
+    backgroundColor: colors.blue,
+  },
+  splashLogo: {
+    width: 92,
+    height: 92,
+    borderRadius: 24,
+    marginBottom: 18,
+  },
+  splashTitle: {
+    color: colors.white,
+    fontSize: 28,
+    fontWeight: "900",
+    marginBottom: 24,
   },
   loadingText: {
     marginTop: 12,
@@ -940,21 +1156,31 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     padding: 22,
+    backgroundColor: colors.white,
   },
   brandMark: {
-    width: 64,
-    height: 64,
-    borderRadius: 18,
-    backgroundColor: colors.blue,
+    width: 72,
+    height: 72,
+    borderRadius: 20,
+    backgroundColor: colors.white,
     justifyContent: "center",
     alignItems: "center",
     alignSelf: "center",
     marginBottom: 14,
+    shadowColor: colors.blue,
+    shadowOpacity: 0.18,
+    shadowRadius: 16,
+    elevation: 6,
   },
   brandQ: {
-    color: colors.white,
+    color: colors.blue,
     fontSize: 32,
     fontWeight: "900",
+  },
+  authLogo: {
+    width: 72,
+    height: 72,
+    borderRadius: 20,
   },
   brandTitle: {
     textAlign: "center",
@@ -1082,9 +1308,128 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "800",
   },
+  topShell: {
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  blueBar: {
+    minHeight: 54,
+    backgroundColor: colors.blue,
+    paddingHorizontal: 18,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  urlPill: {
+    flex: 1,
+    maxWidth: 260,
+    borderRadius: 999,
+    backgroundColor: "rgba(255,255,255,0.18)",
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+  },
+  urlText: {
+    color: colors.white,
+    fontWeight: "800",
+    fontSize: 16,
+  },
+  topIconButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 12,
+  },
+  topIconText: {
+    color: colors.white,
+    fontSize: 22,
+    fontWeight: "900",
+  },
+  modeText: {
+    textAlign: "center",
+    color: colors.blueDark,
+    fontWeight: "900",
+    backgroundColor: "#eef2ff",
+    paddingVertical: 6,
+  },
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  headerLogo: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+  },
+  searchInput: {
+    flex: 1,
+    minHeight: 54,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    paddingHorizontal: 16,
+    fontSize: 15,
+    color: colors.ink,
+  },
   listContent: {
     padding: 16,
-    paddingBottom: 100,
+    paddingBottom: 118,
+  },
+  cardRow: {
+    gap: 14,
+    alignItems: "stretch",
+  },
+  heroCard: {
+    borderRadius: 24,
+    backgroundColor: colors.blue,
+    padding: 26,
+    marginBottom: 18,
+    overflow: "hidden",
+  },
+  heroTitle: {
+    color: colors.white,
+    fontSize: 32,
+    lineHeight: 39,
+    fontWeight: "900",
+  },
+  heroYellow: {
+    color: colors.yellow,
+  },
+  heroText: {
+    color: "#e0e7ff",
+    fontSize: 16,
+    lineHeight: 25,
+    marginTop: 18,
+    marginBottom: 18,
+  },
+  categoryRail: {
+    marginBottom: 18,
+  },
+  categoryChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    paddingHorizontal: 18,
+    paddingVertical: 11,
+    marginRight: 10,
+  },
+  categoryChipActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+  categoryChipText: {
+    color: colors.ink,
+    fontWeight: "800",
+  },
+  categoryChipTextActive: {
+    color: colors.white,
   },
   sectionTitle: {
     fontSize: 26,
@@ -1098,42 +1443,84 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   card: {
+    flex: 1,
     backgroundColor: colors.white,
-    borderRadius: 16,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: colors.line,
     overflow: "hidden",
     marginBottom: 14,
   },
+  cardMedia: {
+    height: 136,
+    backgroundColor: "#eef0ff",
+  },
   cardImage: {
     width: "100%",
-    height: 190,
+    height: "100%",
     backgroundColor: colors.line,
   },
   imagePlaceholder: {
     width: "100%",
-    height: 150,
-    backgroundColor: colors.line,
+    height: "100%",
+    backgroundColor: "#eef0ff",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  placeholderIcon: {
+    fontSize: 42,
+    color: "#c7c9d8",
+  },
+  heartButton: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: "rgba(255,255,255,0.92)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  heartText: {
+    fontSize: 24,
+    color: colors.muted,
+    fontWeight: "900",
+  },
+  heartTextSaved: {
+    color: colors.blue,
+  },
+  imageCount: {
+    position: "absolute",
+    right: 10,
+    bottom: 10,
+    backgroundColor: "rgba(0,0,0,0.62)",
+    color: colors.white,
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    fontWeight: "800",
+    fontSize: 12,
   },
   cardBody: {
-    padding: 14,
+    padding: 12,
   },
   cardTitle: {
-    fontSize: 17,
+    fontSize: 15,
     fontWeight: "800",
     color: colors.ink,
     marginBottom: 6,
   },
   price: {
-    fontSize: 19,
+    fontSize: 17,
     color: colors.blue,
     fontWeight: "900",
     marginBottom: 6,
   },
   meta: {
     color: colors.muted,
-    fontSize: 14,
-    lineHeight: 20,
+    fontSize: 12,
+    lineHeight: 18,
   },
   tabBar: {
     flexDirection: "row",
@@ -1141,17 +1528,42 @@ const styles = StyleSheet.create({
     borderTopColor: colors.line,
     borderTopWidth: 1,
     paddingBottom: Platform.OS === "ios" ? 18 : 8,
-    paddingTop: 8,
+    paddingTop: 6,
   },
   tabItem: {
     flex: 1,
     alignItems: "center",
-    paddingVertical: 8,
+    justifyContent: "center",
+    paddingVertical: 5,
+    minHeight: 58,
+  },
+  postTabItem: {
+    marginTop: -24,
+  },
+  tabIcon: {
+    color: colors.muted,
+    fontSize: 25,
+    lineHeight: 28,
+    fontWeight: "900",
+  },
+  postTabIcon: {
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: colors.yellow,
+    color: colors.ink,
+    textAlign: "center",
+    lineHeight: 62,
+    fontSize: 36,
+    shadowColor: colors.yellow,
+    shadowOpacity: 0.35,
+    shadowRadius: 14,
+    elevation: 8,
   },
   tabText: {
     color: colors.muted,
     fontSize: 12,
-    fontWeight: "700",
+    fontWeight: "800",
   },
   tabTextActive: {
     color: colors.blue,
@@ -1213,6 +1625,34 @@ const styles = StyleSheet.create({
     padding: 16,
     paddingBottom: 110,
   },
+  uploadBox: {
+    minHeight: 190,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "#d1d5db",
+    borderRadius: 18,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    marginBottom: 14,
+    backgroundColor: colors.white,
+  },
+  uploadIcon: {
+    color: "#9ca3af",
+    fontSize: 38,
+    marginBottom: 8,
+  },
+  uploadTitle: {
+    color: colors.muted,
+    fontSize: 16,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  uploadHelp: {
+    color: "#9ca3af",
+    textAlign: "center",
+    lineHeight: 20,
+  },
   selectBlock: {
     marginBottom: 12,
   },
@@ -1271,6 +1711,53 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     marginBottom: 10,
+  },
+  profileCard: {
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    borderRadius: 22,
+    padding: 22,
+    marginBottom: 18,
+  },
+  avatar: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    marginBottom: 18,
+  },
+  avatarFallback: {
+    width: 96,
+    height: 96,
+    borderRadius: 48,
+    backgroundColor: colors.blue,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 18,
+  },
+  avatarInitial: {
+    color: colors.white,
+    fontSize: 36,
+    fontWeight: "900",
+  },
+  profileName: {
+    color: colors.ink,
+    fontSize: 28,
+    fontWeight: "900",
+    marginBottom: 4,
+  },
+  profileStats: {
+    flexDirection: "row",
+    justifyContent: "space-around",
+    marginVertical: 22,
+  },
+  profileStat: {
+    alignItems: "center",
+  },
+  profileStatValue: {
+    color: colors.blue,
+    fontSize: 24,
+    fontWeight: "900",
   },
   empty: {
     padding: 28,

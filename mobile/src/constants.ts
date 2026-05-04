@@ -65,7 +65,7 @@ export const nigeriaStates = [
 ];
 
 export function formatPrice(value: number) {
-  return `₦${new Intl.NumberFormat("en-NG").format(value || 0)}`;
+  return `NGN ${new Intl.NumberFormat("en-NG").format(value || 0)}`;
 }
 
 export function toWhatsappUrl(phone?: string | null) {
