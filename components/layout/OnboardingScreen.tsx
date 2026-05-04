@@ -47,7 +47,16 @@ export default function OnboardingScreen({ onComplete, startOnAuth }: Onboarding
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const error = params.get("error_description") || params.get("error");
-    if (error) toast.error(error);
+    if (!error) return;
+
+    const isExpiredState = error.toLowerCase().includes("oauth state has expired");
+    toast.error(
+      isExpiredState
+        ? "That Google sign-in attempt expired. Please tap Continue with Google again."
+        : error
+    );
+    supabase.auth.signOut({ scope: "local" }).catch(() => {});
+    window.history.replaceState({}, document.title, window.location.pathname || "/");
   }, []);
 
   const roles = [
