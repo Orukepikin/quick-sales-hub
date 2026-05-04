@@ -5,7 +5,7 @@ import { Camera, X, ImagePlus } from "lucide-react";
 import { CATEGORIES, LOCATIONS } from "@/lib/utils";
 
 interface CreateListingFormProps {
-  onSubmit: (form: any) => void;
+  onSubmit: (form: any) => Promise<void> | void;
   onCancel: () => void;
   editing?: any;
 }
@@ -19,6 +19,7 @@ export default function CreateListingForm({ onSubmit, onCancel, editing }: Creat
     location: editing?.loc || editing?.location || "",
   });
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [showAllCategories, setShowAllCategories] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -54,13 +55,43 @@ export default function CreateListingForm({ onSubmit, onCancel, editing }: Creat
       reader.readAsDataURL(file);
     });
 
+  const fileToCompressedDataUrl = async (file: File) => {
+    const originalDataUrl = await fileToDataUrl(file);
+    const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => resolve(img);
+      img.onerror = reject;
+      img.src = originalDataUrl;
+    });
+
+    const maxSide = 1200;
+    const scale = Math.min(1, maxSide / Math.max(image.width, image.height));
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return originalDataUrl;
+    ctx.drawImage(image, 0, 0, width, height);
+    return canvas.toDataURL("image/jpeg", 0.72);
+  };
+
   const handleSubmit = async () => {
+    if (isSubmitting) return;
     if (!form.title || !form.category || !form.price || !form.location || !form.desc) {
       alert("Please fill in all required fields");
       return;
     }
-    const imageData = await Promise.all(images.map((img) => fileToDataUrl(img.file)));
-    onSubmit({ ...form, images: imageData });
+
+    setIsSubmitting(true);
+    try {
+      const imageData = await Promise.all(images.map((img) => fileToCompressedDataUrl(img.file)));
+      await onSubmit({ ...form, images: imageData });
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const inputClass =
@@ -211,9 +242,10 @@ export default function CreateListingForm({ onSubmit, onCancel, editing }: Creat
       {/* Submit */}
       <button
         onClick={handleSubmit}
-        className="w-full py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base transition-all hover:bg-brand-blue-dark mt-2"
+        disabled={isSubmitting}
+        className="w-full py-4 bg-brand-blue text-white rounded-xl font-display font-bold text-base transition-all hover:bg-brand-blue-dark mt-2 disabled:opacity-60 disabled:cursor-not-allowed"
       >
-        Post Ad — It&apos;s Free!
+        {isSubmitting ? "Posting..." : "Post Ad — It&apos;s Free!"}
       </button>
 
       <button

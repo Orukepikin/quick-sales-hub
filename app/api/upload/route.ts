@@ -2,6 +2,17 @@ import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { uploadMultipleImages } from "@/lib/cloudinary";
 
+function hasCloudinaryConfig() {
+  return Boolean(
+    process.env.CLOUDINARY_CLOUD_NAME &&
+      process.env.CLOUDINARY_API_KEY &&
+      process.env.CLOUDINARY_API_SECRET &&
+      process.env.CLOUDINARY_CLOUD_NAME !== "your-cloud-name" &&
+      process.env.CLOUDINARY_API_KEY !== "your-api-key" &&
+      process.env.CLOUDINARY_API_SECRET !== "your-api-secret"
+  );
+}
+
 export async function POST(req: NextRequest) {
   try {
     const payload = getUserFromRequest(req);
@@ -23,6 +34,10 @@ export async function POST(req: NextRequest) {
         { error: "Maximum 10 images allowed" },
         { status: 400 }
       );
+    }
+
+    if (!hasCloudinaryConfig()) {
+      return NextResponse.json({ urls: images });
     }
 
     const results = await uploadMultipleImages(
