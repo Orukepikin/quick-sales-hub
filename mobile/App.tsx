@@ -1,3 +1,4 @@
+import "react-native-url-polyfill/auto";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
@@ -39,13 +40,13 @@ import {
   User,
 } from "./src/api";
 import { categories, colors, formatPrice, nigeriaStates, toWhatsappUrl } from "./src/constants";
-import { supabase } from "./src/supabase";
 
 WebBrowser.maybeCompleteAuthSession();
 
 type Screen = "home" | "post" | "messages" | "alerts" | "saved" | "profile" | "driver";
 type AuthMode = "login" | "signup";
 const OAUTH_REDIRECT_URL = "quicksalehub://auth-callback";
+const SUPABASE_AUTH_URL = "https://rgybqqzxdlfmlljvettg.supabase.co/auth/v1/authorize";
 const logoSource = require("./assets/icon.png");
 const roleOptions = [
   ["BUYER", "Buyer"],
@@ -180,39 +181,25 @@ export default function App() {
   const authenticateWithGoogle = async () => {
     try {
       setLoading(true);
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: "google",
-        options: {
-          redirectTo: OAUTH_REDIRECT_URL,
-          skipBrowserRedirect: true,
-          queryParams: {
-            access_type: "offline",
-            prompt: "consent",
-          },
-        },
-      });
+      const oauthUrl =
+        `${SUPABASE_AUTH_URL}?provider=google` +
+        `&redirect_to=${encodeURIComponent(OAUTH_REDIRECT_URL)}` +
+        "&access_type=offline" +
+        "&prompt=select_account";
 
-      if (error) throw error;
-      if (!data.url) throw new Error("Google sign-in could not start.");
-
-      const result = await WebBrowser.openAuthSessionAsync(data.url, OAUTH_REDIRECT_URL);
+      const result = await WebBrowser.openAuthSessionAsync(oauthUrl, OAUTH_REDIRECT_URL);
       if (result.type !== "success") throw new Error("Google sign-in was cancelled.");
 
       const paramsText = result.url.includes("#")
         ? result.url.split("#")[1]
         : result.url.split("?")[1] || "";
       const params = new URLSearchParams(paramsText);
+      const oauthError = params.get("error_description") || params.get("error");
+      if (oauthError) throw new Error(oauthError.replace(/\+/g, " "));
       const accessToken = params.get("access_token");
-      const refreshToken = params.get("refresh_token");
-      if (!accessToken || !refreshToken) throw new Error("Google did not return a valid session.");
+      if (!accessToken) throw new Error("Google did not return a valid session.");
 
-      const { data: sessionData, error: sessionError } = await supabase.auth.setSession({
-        access_token: accessToken,
-        refresh_token: refreshToken,
-      });
-      if (sessionError) throw sessionError;
-      const supabaseToken = sessionData.session?.access_token || accessToken;
-      const response = await authApi.oauth({ role }, supabaseToken);
+      const response = await authApi.oauth({ role }, accessToken);
       await setStoredToken(response.token);
       setUser(response.user);
       setScreen("home");
