@@ -69,6 +69,9 @@ export const listingsApi = {
     location: string;
     images: string[];
   }) => apiClient<{ listing: Listing }>("/api/listings", { method: "POST", body }),
+  update: (id: string, body: Partial<Listing>) =>
+    apiClient<{ listing: Listing }>(`/api/listings/${id}`, { method: "PATCH", body }),
+  delete: (id: string) => apiClient<{ message: string }>(`/api/listings/${id}`, { method: "DELETE" }),
   save: (id: string) => apiClient(`/api/listings/${id}/save`, { method: "POST" }),
   unsave: (id: string) => apiClient(`/api/listings/${id}/save`, { method: "DELETE" }),
 };
@@ -99,6 +102,20 @@ export const driverApi = {
   getVerification: () => apiClient<DriverVerificationStatus>("/api/driver/verification"),
   submitVerification: (body: DriverVerificationInput) =>
     apiClient<{ status: string }>("/api/driver/verification", { method: "POST", body }),
+};
+
+export const ordersApi = {
+  getAll: () => apiClient<{ orders: OrderItem[] }>("/api/orders"),
+  create: (body: { listingId: string; amount: number; notes?: string }) =>
+    apiClient<{ order: OrderItem }>("/api/orders", { method: "POST", body }),
+};
+
+export const logisticsApi = {
+  getAll: () => apiClient<{ deliveries: DeliveryItem[] }>("/api/logistics"),
+  request: (body: { orderId: string; pickupAddress: string; dropoffAddress: string; price?: number }) =>
+    apiClient<{ delivery: DeliveryItem }>("/api/logistics", { method: "POST", body }),
+  updateStatus: (deliveryId: string, status: string, price?: number) =>
+    apiClient<{ delivery: DeliveryItem }>("/api/logistics", { method: "PATCH", body: { deliveryId, status, price } }),
 };
 
 export type User = {
@@ -137,6 +154,41 @@ export type Listing = {
     phone?: string | null;
     avatar?: string | null;
     isVerified?: boolean;
+  };
+  views?: number | null;
+  saves?: number | null;
+  status?: string;
+  promoted?: boolean;
+};
+
+export type OrderItem = {
+  id: string;
+  amount: number;
+  status?: string;
+  createdAt?: string;
+  listing?: {
+    id: string;
+    title: string;
+    price: number;
+    images?: string[];
+  };
+  buyer?: { id: string; name: string; avatar?: string | null };
+  seller?: { id: string; name: string; avatar?: string | null };
+  delivery?: DeliveryItem | null;
+};
+
+export type DeliveryItem = {
+  id: string;
+  status: string;
+  price?: number | null;
+  trackingCode?: string | null;
+  pickupAddress?: string | null;
+  dropoffAddress?: string | null;
+  driverId?: string | null;
+  order?: {
+    listing?: { title?: string };
+    buyer?: { name?: string; phone?: string | null; location?: string | null };
+    seller?: { name?: string; phone?: string | null; location?: string | null };
   };
 };
 

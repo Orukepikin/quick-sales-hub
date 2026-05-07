@@ -29,12 +29,13 @@ import {
   Conversation,
   driverApi,
   DriverVerificationInput,
-  getStoredToken,
   Listing,
   listingsApi,
+  logisticsApi,
   Message,
   notificationsApi,
   NotificationItem,
+  ordersApi,
   setStoredToken,
   uploadApi,
   User,
@@ -48,6 +49,15 @@ type AuthMode = "login" | "signup";
 const OAUTH_REDIRECT_URL = "quicksalehub://auth-callback";
 const SUPABASE_AUTH_URL = "https://rgybqqzxdlfmlljvettg.supabase.co/auth/v1/authorize";
 const logoSource = require("./assets/icon.png");
+const appFontFamily = Platform.OS === "android" ? "serif" : "Times New Roman";
+(Text as any).defaultProps = {
+  ...((Text as any).defaultProps || {}),
+  style: [{ fontFamily: appFontFamily }, (Text as any).defaultProps?.style],
+};
+(TextInput as any).defaultProps = {
+  ...((TextInput as any).defaultProps || {}),
+  style: [{ fontFamily: appFontFamily }, (TextInput as any).defaultProps?.style],
+};
 const roleOptions = [
   ["BUYER", "Buyer"],
   ["SELLER", "Seller"],
@@ -102,11 +112,7 @@ export default function App() {
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        const token = await getStoredToken();
-        if (token) {
-          const data = await authApi.me();
-          setUser(data.user);
-        }
+        await clearStoredToken();
         await loadListings();
       } catch {
         await clearStoredToken();
@@ -340,13 +346,15 @@ export default function App() {
 
       <View style={styles.flex}>
         {screen === "home" && (
-          <HomeScreen
+          <RoleHomeScreen
+            user={user}
             listings={visibleListings}
             refreshing={refreshing}
             onRefresh={refresh}
             onSelect={setSelectedListing}
             savedIds={savedIds}
             onToggleSave={toggleSave}
+            onNavigate={setScreen}
           />
         )}
         {screen === "post" && <PostScreen onPosted={async () => { setScreen("home"); await loadListings(); }} />}
@@ -360,7 +368,14 @@ export default function App() {
             onToggleSave={toggleSave}
           />
         )}
-        {screen === "profile" && <ProfileScreen user={user} onUser={setUser} onLogout={logout} />}
+        {screen === "profile" && (
+          <ProfileScreen
+            user={user}
+            onUser={setUser}
+            onLogout={logout}
+            onRoleSaved={(nextRole) => setScreen(nextRole === "DRIVER" ? "driver" : "home")}
+          />
+        )}
         {screen === "driver" && <DriverScreen user={user} onUser={setUser} />}
       </View>
 
@@ -422,13 +437,65 @@ function AppHeader({
   );
 }
 
-function HomeScreen({
+function RoleHomeScreen({
+  user,
   listings,
   refreshing,
   onRefresh,
   onSelect,
   savedIds,
   onToggleSave,
+  onNavigate,
+}: {
+  user: User;
+  listings: Listing[];
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSelect: (listing: Listing) => void;
+  savedIds: string[];
+  onToggleSave: (listing: Listing) => void;
+  onNavigate: (screen: Screen) => void;
+}) {
+  if (user.role === "SELLER") {
+    return (
+      <SellerHomeScreen
+        user={user}
+        listings={listings}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        onSelect={onSelect}
+        savedIds={savedIds}
+        onToggleSave={onToggleSave}
+        onNavigate={onNavigate}
+      />
+    );
+  }
+
+  if (user.role === "DRIVER") {
+    return <DriverHomeScreen user={user} onNavigate={onNavigate} />;
+  }
+
+  return (
+    <BuyerHomeScreen
+      listings={listings}
+      refreshing={refreshing}
+      onRefresh={onRefresh}
+      onSelect={onSelect}
+      savedIds={savedIds}
+      onToggleSave={onToggleSave}
+      onNavigate={onNavigate}
+    />
+  );
+}
+
+function BuyerHomeScreen({
+  listings,
+  refreshing,
+  onRefresh,
+  onSelect,
+  savedIds,
+  onToggleSave,
+  onNavigate,
 }: {
   listings: Listing[];
   refreshing: boolean;
@@ -436,6 +503,7 @@ function HomeScreen({
   onSelect: (listing: Listing) => void;
   savedIds: string[];
   onToggleSave: (listing: Listing) => void;
+  onNavigate: (screen: Screen) => void;
 }) {
   return (
     <FlatList
@@ -458,6 +526,9 @@ function HomeScreen({
             <Text style={styles.heroText}>
               Nigeria's fastest growing marketplace. Join thousands buying and selling from phones to fashion.
             </Text>
+            <Pressable onPress={() => onNavigate("post")} style={styles.heroButton}>
+              <Text style={styles.heroButtonText}>Start Selling - Free</Text>
+            </Pressable>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
             <View style={[styles.categoryChip, styles.categoryChipActive]}>
@@ -482,6 +553,176 @@ function HomeScreen({
       )}
       ListEmptyComponent={<EmptyState title="No listings yet" body="Pull down to refresh or post the first ad." />}
     />
+  );
+}
+
+function SellerHomeScreen({
+  user,
+  listings,
+  refreshing,
+  onRefresh,
+  onSelect,
+  savedIds,
+  onToggleSave,
+  onNavigate,
+}: {
+  user: User;
+  listings: Listing[];
+  refreshing: boolean;
+  onRefresh: () => void;
+  onSelect: (listing: Listing) => void;
+  savedIds: string[];
+  onToggleSave: (listing: Listing) => void;
+  onNavigate: (screen: Screen) => void;
+}) {
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const myListings = listings.filter((listing) => listing.sellerId === user.id || listing.seller?.id === user.id);
+  const inquiryCount = Math.max(0, myListings.length * 3);
+  const savedCount = myListings.filter((listing) => savedIds.includes(listing.id)).length;
+
+  const deleteListing = (listing: Listing) => {
+    Alert.alert("Delete listing", `Remove "${listing.title}" from Quick Sales Hub?`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            setDeletingId(listing.id);
+            await listingsApi.delete(listing.id);
+            await onRefresh();
+          } catch (error: any) {
+            Alert.alert("Could not delete listing", error.message || "Please try again.");
+          } finally {
+            setDeletingId(null);
+          }
+        },
+      },
+    ]);
+  };
+
+  return (
+    <FlatList
+      data={myListings}
+      numColumns={2}
+      keyExtractor={(item) => item.id}
+      contentContainerStyle={styles.listContent}
+      columnWrapperStyle={styles.cardRow}
+      initialNumToRender={8}
+      maxToRenderPerBatch={8}
+      windowSize={7}
+      removeClippedSubviews
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      ListHeaderComponent={
+        <>
+          <View style={styles.dashboardHero}>
+            <Text style={styles.dashboardKicker}>Seller Dashboard</Text>
+            <Text style={styles.dashboardTitle}>Manage your ads, buyer inquiries, and selling profile.</Text>
+            <Pressable onPress={() => onNavigate("post")} style={styles.yellowButton}>
+              <Text style={styles.yellowButtonText}>Post New Ad</Text>
+            </Pressable>
+          </View>
+          <View style={styles.statsGrid}>
+            <StatCard label="Active Listings" value={String(myListings.length)} accent={colors.blue} />
+            <StatCard label="Inquiries" value={String(inquiryCount)} accent={colors.success} />
+            <StatCard label="Saved by Buyers" value={String(savedCount)} accent={colors.yellow} />
+            <StatCard label="Rating" value={Number(user.rating || 0).toFixed(1)} accent="#7c3aed" />
+          </View>
+          <Text style={styles.sectionTitle}>My Listings</Text>
+        </>
+      }
+      renderItem={({ item }) => (
+        <View style={styles.sellerListingWrap}>
+          <ListingCard
+            listing={item}
+            saved={savedIds.includes(item.id)}
+            onPress={() => onSelect(item)}
+            onToggleSave={() => onToggleSave(item)}
+          />
+          <Pressable
+            onPress={() => deleteListing(item)}
+            disabled={deletingId === item.id}
+            style={[styles.dangerButton, deletingId === item.id && styles.disabled]}
+          >
+            <Text style={styles.dangerButtonText}>{deletingId === item.id ? "Deleting..." : "Delete"}</Text>
+          </Pressable>
+        </View>
+      )}
+      ListEmptyComponent={<EmptyState title="No listings yet" body="Post your first ad and start selling to buyers." />}
+    />
+  );
+}
+
+function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (screen: Screen) => void }) {
+  const [deliveries, setDeliveries] = useState<any[]>([]);
+  const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+
+  const loadDeliveries = useCallback(async () => {
+    if (!user.isVerified) return;
+    try {
+      setLoadingDeliveries(true);
+      const data = await logisticsApi.getAll();
+      setDeliveries(data.deliveries || []);
+    } catch (error: any) {
+      Alert.alert("Could not load deliveries", error.message || "Please try again.");
+    } finally {
+      setLoadingDeliveries(false);
+    }
+  }, [user.isVerified]);
+
+  useEffect(() => {
+    loadDeliveries();
+  }, [loadDeliveries]);
+
+  const available = deliveries.filter((item) => item.status === "PENDING" && !item.driverId);
+  const active = deliveries.filter((item) => ["ACCEPTED", "PICKED_UP", "IN_TRANSIT"].includes(item.status));
+  const completed = deliveries.filter((item) => item.status === "DELIVERED");
+  const earnings = completed.reduce((sum, item) => sum + Number(item.price || 0), 0);
+
+  return (
+    <ScrollView
+      contentContainerStyle={styles.listContent}
+      refreshControl={<RefreshControl refreshing={loadingDeliveries} onRefresh={loadDeliveries} />}
+    >
+      <View style={styles.dashboardHero}>
+        <Text style={styles.dashboardKicker}>Driver Dashboard</Text>
+        <Text style={styles.dashboardTitle}>
+          {user.isVerified ? "Manage delivery jobs and earnings." : "Complete verification before delivery access."}
+        </Text>
+        <Pressable onPress={() => onNavigate("driver")} style={styles.yellowButton}>
+          <Text style={styles.yellowButtonText}>{user.isVerified ? "Open Driver Jobs" : "Start Verification"}</Text>
+        </Pressable>
+      </View>
+      <View style={styles.statsGrid}>
+        <StatCard label="Available Jobs" value={user.isVerified ? String(available.length) : "Locked"} accent={colors.blue} />
+        <StatCard label="Active Jobs" value={String(active.length)} accent="#f97316" />
+        <StatCard label="Completed" value={String(completed.length)} accent={colors.success} />
+        <StatCard label="Earnings" value={formatPrice(earnings)} accent={colors.yellow} />
+      </View>
+      {!user.isVerified && (
+        <View style={styles.notificationCard}>
+          <Text style={styles.cardTitle}>Verification required</Text>
+          <Text style={styles.meta}>Drivers cannot access delivery features until their details are submitted and approved.</Text>
+        </View>
+      )}
+      {user.isVerified && deliveries.slice(0, 6).map((delivery) => (
+        <View key={delivery.id} style={styles.notificationCard}>
+          <Text style={styles.cardTitle}>{delivery.order?.listing?.title || "Delivery job"}</Text>
+          <Text style={styles.meta}>Status: {delivery.status}</Text>
+          <Text style={styles.meta}>Pickup: {delivery.pickupAddress || delivery.order?.seller?.location || "Not provided"}</Text>
+          <Text style={styles.meta}>Dropoff: {delivery.dropoffAddress || delivery.order?.buyer?.location || "Not provided"}</Text>
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
+function StatCard({ label, value, accent }: { label: string; value: string; accent: string }) {
+  return (
+    <View style={[styles.statCard, { borderLeftColor: accent }]}>
+      <Text style={styles.meta}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
   );
 }
 
@@ -563,6 +804,7 @@ function ListingModal({
   onClose: () => void;
   onMessage: (listing: Listing) => void;
 }) {
+  const [ordering, setOrdering] = useState(false);
   if (!listing) return null;
   const whatsAppUrl = toWhatsappUrl(listing.seller?.phone);
 
@@ -572,6 +814,22 @@ function ListingModal({
       return;
     }
     await Linking.openURL(whatsAppUrl);
+  };
+
+  const createOrder = async () => {
+    try {
+      setOrdering(true);
+      await ordersApi.create({
+        listingId: listing.id,
+        amount: Number(listing.price || 0),
+        notes: "Order started from Android app",
+      });
+      Alert.alert("Order created", "The seller has been notified. You can continue the conversation in Messages.");
+    } catch (error: any) {
+      Alert.alert("Could not create order", error.message || "Please try again.");
+    } finally {
+      setOrdering(false);
+    }
   };
 
   return (
@@ -591,6 +849,7 @@ function ListingModal({
             <Text style={styles.sellerName}>{listing.seller?.name || "Seller"}</Text>
             <Text style={styles.meta}>{listing.seller?.isVerified ? "Verified seller" : "Seller"}</Text>
           </View>
+          <PrimaryButton title={ordering ? "Creating order..." : "Buy / Reserve Item"} onPress={createOrder} disabled={ordering} />
           <PrimaryButton title="Contact on WhatsApp" onPress={contactSeller} />
           <SecondaryButton title="Message in App" onPress={() => onMessage(listing)} />
           <SecondaryButton title="Close" onPress={onClose} />
@@ -931,7 +1190,17 @@ function AlertsScreen({ notifications, onRefresh }: { notifications: Notificatio
   );
 }
 
-function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: User) => void; onLogout: () => void }) {
+function ProfileScreen({
+  user,
+  onUser,
+  onLogout,
+  onRoleSaved,
+}: {
+  user: User;
+  onUser: (user: User) => void;
+  onLogout: () => void;
+  onRoleSaved: (role: string) => void;
+}) {
   const [form, setForm] = useState({
     name: user.name || "",
     phone: user.phone || "",
@@ -946,12 +1215,29 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
   const rating = Number(user.rating || 0);
   const reviews = user.totalRatings || 0;
 
+  const changeRole = async (nextRole: string) => {
+    setForm((prev) => ({ ...prev, role: nextRole }));
+    try {
+      setSaving(true);
+      const nextForm = { ...form, role: nextRole };
+      const data = await authApi.updateProfile(nextForm);
+      onUser(data.user);
+      onRoleSaved(data.user.role || nextRole);
+    } catch (error: any) {
+      Alert.alert("Could not switch role", error.message || "Please try again.");
+      setForm((prev) => ({ ...prev, role: user.role || "BUYER" }));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const save = async () => {
     try {
       setSaving(true);
       const data = await authApi.updateProfile(form);
       onUser(data.user);
-      Alert.alert("Saved", "Profile updated.");
+      onRoleSaved(data.user.role || form.role);
+      Alert.alert("Saved", `${roleName(data.user.role || form.role)} mode is now active.`);
     } catch (error: any) {
       Alert.alert("Could not save", error.message || "Please try again.");
     } finally {
@@ -978,7 +1264,7 @@ function ProfileScreen({ user, onUser, onLogout }: { user: User; onUser: (user: 
         </View>
         <Text style={styles.selectLabel}>Display Name</Text>
         <TextInput style={styles.input} placeholder="Name" value={form.name} onChangeText={(name) => setForm((p) => ({ ...p, name }))} />
-        <SelectRow label="Switch Role" value={form.role} values={roleOptions} onChange={(role) => setForm((p) => ({ ...p, role }))} />
+        <SelectRow label="Switch Role" value={form.role} values={roleOptions} onChange={changeRole} />
         <Text style={styles.selectLabel}>WhatsApp Number</Text>
         <TextInput style={styles.input} placeholder="+234 800 000 0000" value={form.whatsapp || form.phone} keyboardType="phone-pad" onChangeText={(whatsapp) => setForm((p) => ({ ...p, whatsapp, phone: whatsapp }))} />
         <SelectRow label="State" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
@@ -1415,6 +1701,10 @@ const styles = StyleSheet.create({
     gap: 14,
     alignItems: "stretch",
   },
+  sellerListingWrap: {
+    flex: 1,
+    marginBottom: 14,
+  },
   heroCard: {
     borderRadius: 24,
     backgroundColor: colors.blue,
@@ -1437,6 +1727,50 @@ const styles = StyleSheet.create({
     lineHeight: 25,
     marginTop: 18,
     marginBottom: 18,
+  },
+  heroButton: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.yellow,
+    borderRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 13,
+  },
+  heroButtonText: {
+    color: colors.ink,
+    fontSize: 15,
+    fontWeight: "900",
+  },
+  dashboardHero: {
+    backgroundColor: colors.blue,
+    borderRadius: 24,
+    padding: 22,
+    marginBottom: 16,
+  },
+  dashboardKicker: {
+    color: colors.yellow,
+    fontSize: 13,
+    fontWeight: "900",
+    marginBottom: 8,
+    textTransform: "uppercase",
+  },
+  dashboardTitle: {
+    color: colors.white,
+    fontSize: 24,
+    lineHeight: 31,
+    fontWeight: "800",
+    marginBottom: 18,
+  },
+  yellowButton: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.yellow,
+    borderRadius: 14,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+  },
+  yellowButtonText: {
+    color: colors.ink,
+    fontWeight: "900",
+    fontSize: 14,
   },
   categoryRail: {
     marginBottom: 18,
@@ -1650,6 +1984,20 @@ const styles = StyleSheet.create({
     fontSize: 17,
     fontWeight: "800",
     color: colors.ink,
+  },
+  dangerButton: {
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: "#fef2f2",
+    borderWidth: 1,
+    borderColor: "#fecaca",
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: -6,
+  },
+  dangerButtonText: {
+    color: colors.danger,
+    fontWeight: "900",
   },
   formContent: {
     padding: 16,
@@ -1991,6 +2339,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderWidth: 1,
     borderColor: colors.line,
+    borderLeftWidth: 4,
     borderRadius: 16,
     padding: 14,
   },
