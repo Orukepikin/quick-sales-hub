@@ -108,15 +108,21 @@ export const driverApi = {
 export const ordersApi = {
   getAll: () => apiClient<{ orders: OrderItem[] }>("/api/orders"),
   create: (body: { listingId: string; amount: number; notes?: string }) =>
-    apiClient<{ order: OrderItem }>("/api/orders", { method: "POST", body }),
+    apiClient<{ order: OrderItem; existing?: boolean }>("/api/orders", { method: "POST", body }),
 };
 
 export const logisticsApi = {
   getAll: () => apiClient<{ deliveries: DeliveryItem[] }>("/api/logistics"),
   request: (body: { orderId: string; pickupAddress: string; dropoffAddress: string; price?: number }) =>
-    apiClient<{ delivery: DeliveryItem }>("/api/logistics", { method: "POST", body }),
+    apiClient<{ delivery: DeliveryItem; existing?: boolean }>("/api/logistics", { method: "POST", body }),
   updateStatus: (deliveryId: string, status: string, price?: number) =>
     apiClient<{ delivery: DeliveryItem }>("/api/logistics", { method: "PATCH", body: { deliveryId, status, price } }),
+};
+
+export const reviewsApi = {
+  getForUser: (userId: string) => apiClient<{ reviews: ReviewItem[] }>(`/api/reviews?userId=${encodeURIComponent(userId)}`),
+  create: (body: { orderId: string; rating: number; comment?: string }) =>
+    apiClient<{ review: ReviewItem }>("/api/reviews", { method: "POST", body }),
 };
 
 export type User = {
@@ -155,11 +161,14 @@ export type Listing = {
     phone?: string | null;
     avatar?: string | null;
     isVerified?: boolean;
+    rating?: number | null;
+    totalRatings?: number | null;
   };
   views?: number | null;
   saves?: number | null;
   status?: string;
   promoted?: boolean;
+  isSaved?: boolean;
 };
 
 export type OrderItem = {
@@ -191,6 +200,16 @@ export type DeliveryItem = {
     buyer?: { name?: string; phone?: string | null; location?: string | null };
     seller?: { name?: string; phone?: string | null; location?: string | null };
   };
+};
+
+export type ReviewItem = {
+  id: string;
+  orderId: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+  reviewer?: { id: string; name: string; avatar?: string | null };
+  order?: { listing?: { title?: string } };
 };
 
 export type NotificationItem = {

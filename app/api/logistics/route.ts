@@ -101,6 +101,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    const existingDelivery = await prisma.delivery.findUnique({
+      where: { orderId },
+      include: {
+        order: {
+          include: {
+            listing: { select: { title: true } },
+            buyer: { select: { name: true, location: true, phone: true } },
+            seller: { select: { name: true, location: true, phone: true } },
+          },
+        },
+        driver: { select: { id: true, name: true, phone: true, rating: true } },
+      },
+    });
+
+    if (existingDelivery) {
+      return NextResponse.json({ delivery: existingDelivery, existing: true });
+    }
+
     const delivery = await prisma.delivery.create({
       data: {
         orderId,

@@ -36,6 +36,8 @@ import {
   notificationsApi,
   NotificationItem,
   ordersApi,
+  ReviewItem,
+  reviewsApi,
   setStoredToken,
   uploadApi,
   User,
@@ -87,6 +89,26 @@ const featuredCategoryIds = [
   "sports",
   "repair-construction",
 ];
+const categoryGroups = [
+  { id: "phones", name: "Phones & Tablets", children: ["mobile-phones", "tablets", "phone-accessories", "smart-watches", "headphones"] },
+  { id: "electronics", name: "Electronics", children: ["tv-dvd", "tv-video", "audio-music", "cameras", "video-games", "security-surveillance"] },
+  { id: "computers", name: "Computers & Laptops", children: ["laptops", "desktop-computers", "computer-accessories", "computer-hardware", "computer-monitors", "printers-scanners", "networking-products", "software"] },
+  { id: "vehicles", name: "Cars & Vehicles", children: ["cars", "car-parts", "motorcycles", "trucks", "buses", "heavy-equipment", "boats"] },
+  { id: "real-estate", name: "Real Estate", children: ["property", "houses-sale", "houses-rent", "land-plots", "commercial-property", "short-let", "rooms-shared", "event-centres"] },
+  { id: "fashion", name: "Fashion", children: ["womens-fashion", "mens-fashion", "baby-kids-fashion", "clothing", "shoes", "bags", "watches", "jewelry", "fashion-accessories", "wedding-wear", "sportswear"] },
+  { id: "beauty", name: "Beauty & Personal Care", children: ["hair-beauty", "face-care", "oral-care", "body-care", "makeup", "skincare", "fragrances", "health-beauty-tools", "vitamins-supplements"] },
+  { id: "jobs", name: "Jobs & Services", children: ["accounting-jobs", "advertising-jobs", "clerical-jobs", "computing-jobs", "customer-service-jobs", "driver-jobs", "engineering-jobs", "healthcare-jobs", "sales-jobs", "teaching-jobs"] },
+  { id: "services", name: "Services", children: ["computer-it-services", "cleaning-services", "event-services", "legal-services", "logistics-services", "printing-services", "travel-agents", "tutoring", "repair-services"] },
+  { id: "home-furniture-appliances", name: "Home, Furniture & Appliances", children: ["furniture", "office-furniture", "home-appliances", "kitchen-appliances", "kitchenware", "home-accessories", "garden", "lighting", "bedding"] },
+];
+const childCategoryIds = new Set(categoryGroups.flatMap((group) => group.children));
+const categoryGroupFor = (id: string) => categoryGroups.find((group) => group.id === id);
+const parentCategoryIds = new Set(categoryGroups.map((group) => group.id));
+const listingMatchesCategory = (listingCategory: string, selectedCategory: string) => {
+  if (selectedCategory === "all") return true;
+  if (listingCategory === selectedCategory) return true;
+  return categoryGroupFor(selectedCategory)?.children.includes(listingCategory) || false;
+};
 const categoryIconText = (id: string, name: string) => {
   const iconMap: Record<string, string> = {
     phones: "PH",
@@ -192,7 +214,9 @@ export default function App() {
 
   const loadListings = useCallback(async () => {
     const data = await listingsApi.getAll();
-    setListings(data.listings || []);
+    const nextListings = data.listings || [];
+    setListings(nextListings);
+    setSavedIds(nextListings.filter((listing) => listing.isSaved).map((listing) => listing.id));
   }, []);
 
   const loadNotifications = useCallback(async () => {
@@ -228,7 +252,14 @@ export default function App() {
     const query = searchQuery.trim().toLowerCase();
     if (!query) return listings;
     return listings.filter((listing) =>
-      [listing.title, listing.description, listing.location, categoryName(listing.category), listing.seller?.name]
+      [
+        listing.title,
+        listing.description,
+        listing.location,
+        categoryName(listing.category),
+        categoryGroups.find((group) => group.children.includes(listing.category))?.name,
+        listing.seller?.name,
+      ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query))
     );
@@ -245,6 +276,7 @@ export default function App() {
     try {
       if (saved) await listingsApi.unsave(listing.id);
       else await listingsApi.save(listing.id);
+      setListings((prev) => prev.map((item) => item.id === listing.id ? { ...item, isSaved: !saved } : item));
     } catch (error: any) {
       setSavedIds((prev) => (saved ? [...prev, listing.id] : prev.filter((id) => id !== listing.id)));
       Alert.alert("Could not update saved", error.message || "Please try again.");
@@ -457,6 +489,7 @@ export default function App() {
           <RoleHomeScreen
             user={user}
             listings={visibleListings}
+            searchQuery={searchQuery}
             refreshing={refreshing}
             onRefresh={refresh}
             onSelect={setSelectedListing}
@@ -611,6 +644,7 @@ function AppHeader({
 function RoleHomeScreen({
   user,
   listings,
+  searchQuery,
   refreshing,
   onRefresh,
   onSelect,
@@ -621,6 +655,7 @@ function RoleHomeScreen({
 }: {
   user: User;
   listings: Listing[];
+  searchQuery: string;
   refreshing: boolean;
   onRefresh: () => void;
   onSelect: (listing: Listing) => void;
@@ -652,6 +687,7 @@ function RoleHomeScreen({
   return (
     <BuyerHomeScreen
       listings={listings}
+      searchQuery={searchQuery}
       refreshing={refreshing}
       onRefresh={onRefresh}
       onSelect={onSelect}
@@ -664,6 +700,7 @@ function RoleHomeScreen({
 
 function BuyerHomeScreen({
   listings,
+  searchQuery,
   refreshing,
   onRefresh,
   onSelect,
@@ -672,6 +709,7 @@ function BuyerHomeScreen({
   onNavigate,
 }: {
   listings: Listing[];
+  searchQuery: string;
   refreshing: boolean;
   onRefresh: () => void;
   onSelect: (listing: Listing) => void;
@@ -683,17 +721,28 @@ function BuyerHomeScreen({
   const [jobProfession, setJobProfession] = useState("all");
   const [jobType, setJobType] = useState("all");
   const [jobSalary, setJobSalary] = useState("all");
+  const categorySearchResults = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase();
+    if (!query) return [];
+    return categoryGroups
+      .filter((group) =>
+        group.name.toLowerCase().includes(query) ||
+        group.children.some((childId) => categoryName(childId).toLowerCase().includes(query))
+      )
+      .slice(0, 8);
+  }, [searchQuery]);
   const categoryFilters = useMemo(() => {
     const prioritized = featuredCategoryIds
       .map((id) => categories.find((item) => item.id === id))
       .filter(Boolean) as typeof categories;
     const used = new Set(prioritized.map((item) => item.id));
-    return [...prioritized, ...categories.filter((item) => !used.has(item.id)).slice(0, 10)];
+    return [...prioritized, ...categories.filter((item) => !used.has(item.id) && parentCategoryIds.has(item.id)).slice(0, 10)];
   }, []);
   const filteredListings = useMemo(
-    () => activeCategory === "all" ? listings : listings.filter((listing) => listing.category === activeCategory),
+    () => activeCategory === "all" ? listings : listings.filter((listing) => listingMatchesCategory(listing.category, activeCategory)),
     [activeCategory, listings]
   );
+  const activeGroup = categoryGroupFor(activeCategory);
 
   return (
     <FlatList
@@ -722,6 +771,18 @@ function BuyerHomeScreen({
           </View>
           <View style={styles.categoryPanel}>
             <Text style={styles.categoryPanelTitle}>Popular Categories</Text>
+            {categorySearchResults.length > 0 && (
+              <View style={styles.categorySearchBox}>
+                <Text style={styles.categorySearchTitle}>Matching categories</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  {categorySearchResults.map((group) => (
+                    <Pressable key={group.id} onPress={() => setActiveCategory(group.id)} style={styles.subcategoryChip}>
+                      <Text style={styles.subcategoryText}>{group.name}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
               <View style={styles.categoryRailRows}>
                 <View style={styles.categoryRailRow}>
@@ -771,6 +832,23 @@ function BuyerHomeScreen({
                 </View>
               </View>
             </ScrollView>
+            {activeGroup && (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.subcategoryRail}>
+                {activeGroup.children.map((childId) => {
+                  const child = categories.find((item) => item.id === childId);
+                  if (!child) return null;
+                  return (
+                    <Pressable
+                      key={child.id}
+                      onPress={() => setActiveCategory(child.id)}
+                      style={[styles.subcategoryChip, activeCategory === child.id && styles.subcategoryChipActive]}
+                    >
+                      <Text style={[styles.subcategoryText, activeCategory === child.id && styles.subcategoryTextActive]}>{child.name}</Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            )}
           </View>
           {activeCategory === "jobs" && (
             <JobFilterPanel
@@ -1172,6 +1250,35 @@ function ListingModal({
   const [deliveryLoading, setDeliveryLoading] = useState(false);
   const [dropoffAddress, setDropoffAddress] = useState(user.location || "");
   const [deliveryPrice, setDeliveryPrice] = useState("");
+  const [deliveryRequested, setDeliveryRequested] = useState(false);
+  const [relatedOrderId, setRelatedOrderId] = useState<string | null>(null);
+  const [reviews, setReviews] = useState<ReviewItem[]>([]);
+  const [reviewRating, setReviewRating] = useState(5);
+  const [reviewComment, setReviewComment] = useState("");
+  const [reviewing, setReviewing] = useState(false);
+
+  useEffect(() => {
+    if (!listing) return;
+    setDeliveryRequested(false);
+    setRelatedOrderId(null);
+    setReviews([]);
+    setReviewComment("");
+
+    ordersApi.getAll()
+      .then((data) => {
+        const order = (data.orders || []).find((item) => item.listing?.id === listing.id);
+        setRelatedOrderId(order?.id || null);
+        setDeliveryRequested(Boolean(order?.delivery));
+      })
+      .catch(() => {});
+
+    if (listing.seller?.id) {
+      reviewsApi.getForUser(listing.seller.id)
+        .then((data) => setReviews(data.reviews || []))
+        .catch(() => setReviews([]));
+    }
+  }, [listing?.id, listing?.seller?.id]);
+
   if (!listing) return null;
   const whatsAppUrl = toWhatsappUrl(listing.seller?.phone);
 
@@ -1186,12 +1293,14 @@ function ListingModal({
   const createOrder = async () => {
     try {
       setOrdering(true);
-      await ordersApi.create({
+      const response = await ordersApi.create({
         listingId: listing.id,
         amount: Number(listing.price || 0),
         notes: "Order started from Android app",
       });
-      Alert.alert("Order created", "The seller has been notified. You can continue the conversation in Messages.");
+      setRelatedOrderId(response.order.id);
+      setDeliveryRequested(Boolean(response.order.delivery));
+      Alert.alert(response.existing ? "Order already exists" : "Order created", "The seller has been notified. You can continue the conversation in Messages.");
     } catch (error: any) {
       Alert.alert("Could not create order", error.message || "Please try again.");
     } finally {
@@ -1213,17 +1322,43 @@ function ListingModal({
         amount: Number(listing.price || 0),
         notes: "Order with delivery requested from Android app",
       });
-      await logisticsApi.request({
+      const deliveryResponse = await logisticsApi.request({
         orderId: orderResponse.order.id,
         pickupAddress: listing.location || listing.seller?.phone || "Seller location",
         dropoffAddress: dropoff,
         price: parsePriceInput(deliveryPrice),
       });
-      Alert.alert("Driver requested", "Verified drivers can now see this delivery request. Check Messages and Notifications for updates.");
+      setRelatedOrderId(orderResponse.order.id);
+      setDeliveryRequested(true);
+      Alert.alert(deliveryResponse.existing ? "Driver already requested" : "Driver requested", "Verified drivers can now see this delivery request. Check Messages and Notifications for updates.");
     } catch (error: any) {
       Alert.alert("Could not request driver", error.message || "Please try again.");
     } finally {
       setDeliveryLoading(false);
+    }
+  };
+
+  const submitReview = async () => {
+    if (!relatedOrderId) {
+      Alert.alert("Create an order first", "Buy or reserve this item before rating the seller.");
+      return;
+    }
+    try {
+      setReviewing(true);
+      await reviewsApi.create({
+        orderId: relatedOrderId,
+        rating: reviewRating,
+        comment: reviewComment.trim() || undefined,
+      });
+      if (listing.seller?.id) {
+        const data = await reviewsApi.getForUser(listing.seller.id);
+        setReviews(data.reviews || []);
+      }
+      Alert.alert("Review saved", "Your rating is now visible on the seller's public profile.");
+    } catch (error: any) {
+      Alert.alert("Could not save review", error.message || "Please try again.");
+    } finally {
+      setReviewing(false);
     }
   };
 
@@ -1246,16 +1381,24 @@ function ListingModal({
               {listing.seller?.isVerified && <Text style={styles.verifiedBadge}>Verified</Text>}
             </View>
             <Text style={styles.meta}>{listing.seller?.isVerified ? "Verified seller" : "Seller"}</Text>
+            <Text style={styles.meta}>
+              Rating: {Number(listing.seller?.rating || 0).toFixed(1)} ({listing.seller?.totalRatings || 0} reviews)
+            </Text>
           </View>
           <View style={styles.deliveryBox}>
             <Text style={styles.cardTitle}>Need delivery?</Text>
-            <Text style={styles.meta}>Create the order and send it to verified drivers for pickup and drop-off.</Text>
+            <Text style={styles.meta}>
+              {deliveryRequested
+                ? "A driver request has already been made for this item."
+                : "Create the order and send it to verified drivers for pickup and drop-off."}
+            </Text>
             <TextInput
               value={dropoffAddress}
               onChangeText={setDropoffAddress}
               placeholder="Delivery address"
               placeholderTextColor="#9ca3af"
               style={styles.input}
+              editable={!deliveryRequested}
             />
             <TextInput
               value={deliveryPrice}
@@ -1264,8 +1407,39 @@ function ListingModal({
               placeholderTextColor="#9ca3af"
               keyboardType="numeric"
               style={styles.input}
+              editable={!deliveryRequested}
             />
-            <PrimaryButton title={deliveryLoading ? "Requesting driver..." : "Order with Driver Delivery"} onPress={requestDelivery} disabled={deliveryLoading} />
+            <PrimaryButton
+              title={deliveryRequested ? "Driver Request Sent" : deliveryLoading ? "Requesting driver..." : "Order with Driver Delivery"}
+              onPress={requestDelivery}
+              disabled={deliveryLoading || deliveryRequested}
+            />
+          </View>
+          <View style={styles.reviewBox}>
+            <Text style={styles.cardTitle}>Reviews</Text>
+            <Text style={styles.meta}>Rate this seller after you buy or reserve this item.</Text>
+            <View style={styles.ratingRow}>
+              {[1, 2, 3, 4, 5].map((value) => (
+                <Pressable key={value} onPress={() => setReviewRating(value)} style={[styles.ratingDot, reviewRating >= value && styles.ratingDotActive]}>
+                  <Text style={[styles.ratingDotText, reviewRating >= value && styles.ratingDotTextActive]}>{value}</Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              value={reviewComment}
+              onChangeText={setReviewComment}
+              placeholder="Write a short review"
+              placeholderTextColor="#9ca3af"
+              style={[styles.input, styles.reviewInput]}
+              multiline
+            />
+            <SecondaryButton title={reviewing ? "Saving review..." : "Submit Review"} onPress={submitReview} />
+            {reviews.slice(0, 3).map((review) => (
+              <View key={review.id} style={styles.reviewItem}>
+                <Text style={styles.reviewTitle}>{review.reviewer?.name || "Buyer"} - {review.rating}/5</Text>
+                <Text style={styles.meta}>{review.comment || "No comment"}</Text>
+              </View>
+            ))}
           </View>
           <PrimaryButton title={ordering ? "Creating order..." : "Buy / Reserve Item"} onPress={createOrder} disabled={ordering} />
           <PrimaryButton title="Contact on WhatsApp" onPress={contactSeller} />
@@ -2318,6 +2492,14 @@ const styles = StyleSheet.create({
     fontWeight: "900",
     marginBottom: 10,
   },
+  categorySearchBox: {
+    marginBottom: 12,
+  },
+  categorySearchTitle: {
+    color: colors.muted,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
   categoryRailRows: {
     gap: 10,
   },
@@ -2368,6 +2550,29 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   categoryChipTextActive: {
+    color: colors.white,
+  },
+  subcategoryRail: {
+    marginTop: 12,
+  },
+  subcategoryChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: colors.line,
+    backgroundColor: colors.white,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 8,
+  },
+  subcategoryChipActive: {
+    backgroundColor: colors.blue,
+    borderColor: colors.blue,
+  },
+  subcategoryText: {
+    color: colors.ink,
+    fontWeight: "800",
+  },
+  subcategoryTextActive: {
     color: colors.white,
   },
   jobPanel: {
@@ -2618,6 +2823,56 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     marginBottom: 16,
+  },
+  reviewBox: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginBottom: 16,
+  },
+  ratingRow: {
+    flexDirection: "row",
+    gap: 8,
+    marginVertical: 10,
+  },
+  ratingDot: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    borderWidth: 1,
+    borderColor: colors.line,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+  },
+  ratingDotActive: {
+    backgroundColor: colors.yellow,
+    borderColor: colors.yellow,
+  },
+  ratingDotText: {
+    color: colors.ink,
+    fontWeight: "900",
+  },
+  ratingDotTextActive: {
+    color: colors.ink,
+  },
+  reviewInput: {
+    minHeight: 84,
+    textAlignVertical: "top",
+    paddingTop: 14,
+  },
+  reviewItem: {
+    borderTopWidth: 1,
+    borderTopColor: colors.line,
+    paddingTop: 10,
+    marginTop: 10,
+  },
+  reviewTitle: {
+    color: colors.ink,
+    fontWeight: "900",
+    marginBottom: 4,
   },
   verifiedRow: {
     flexDirection: "row",

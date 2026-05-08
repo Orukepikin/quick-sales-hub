@@ -15,23 +15,26 @@ export async function POST(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await prisma.savedListing.create({
-      data: {
-        userId: payload.userId,
-        listingId: id,
-      },
+    const existing = await prisma.savedListing.findUnique({
+      where: { userId_listingId: { userId: payload.userId, listingId: id } },
     });
 
-    await prisma.listing.update({
-      where: { id },
-      data: { saves: { increment: 1 } },
-    });
+    if (!existing) {
+      await prisma.savedListing.create({
+        data: {
+          userId: payload.userId,
+          listingId: id,
+        },
+      });
+
+      await prisma.listing.update({
+        where: { id },
+        data: { saves: { increment: 1 } },
+      });
+    }
 
     return NextResponse.json({ message: "Listing saved" });
   } catch (error: any) {
-    if (error.code === "P2002") {
-      return NextResponse.json({ error: "Already saved" }, { status: 400 });
-    }
     console.error("Save listing error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
@@ -49,19 +52,25 @@ export async function DELETE(req: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    await prisma.savedListing.delete({
-      where: {
-        userId_listingId: {
-          userId: payload.userId,
-          listingId: id,
-        },
-      },
+    const existing = await prisma.savedListing.findUnique({
+      where: { userId_listingId: { userId: payload.userId, listingId: id } },
     });
 
-    await prisma.listing.update({
-      where: { id },
-      data: { saves: { decrement: 1 } },
-    });
+    if (existing) {
+      await prisma.savedListing.delete({
+        where: {
+          userId_listingId: {
+            userId: payload.userId,
+            listingId: id,
+          },
+        },
+      });
+
+      await prisma.listing.update({
+        where: { id },
+        data: { saves: { decrement: 1 } },
+      });
+    }
 
     return NextResponse.json({ message: "Listing unsaved" });
   } catch (error) {

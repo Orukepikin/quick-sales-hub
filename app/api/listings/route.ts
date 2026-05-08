@@ -66,15 +66,27 @@ export async function GET(req: NextRequest) {
               phone: true,
               isVerified: true,
               rating: true,
+              totalRatings: true,
             },
           },
+          savedBy: payload
+            ? {
+                where: { userId: payload.userId },
+                select: { id: true },
+              }
+            : false,
         },
       }),
       prisma.listing.count({ where }),
     ]);
 
+    const normalizedListings = listings.map((listing: any) => {
+      const { savedBy, ...rest } = listing;
+      return { ...rest, isSaved: Array.isArray(savedBy) && savedBy.length > 0 };
+    });
+
     return NextResponse.json({
-      listings,
+      listings: normalizedListings,
       pagination: {
         page,
         limit,

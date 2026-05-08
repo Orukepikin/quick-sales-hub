@@ -50,9 +50,9 @@ export async function POST(req: NextRequest) {
       where: { id: validated.orderId },
     });
 
-    if (!order || order.status !== "DELIVERED") {
+    if (!order || !["DELIVERED", "CONFIRMED", "IN_TRANSIT"].includes(order.status)) {
       return NextResponse.json(
-        { error: "Can only review delivered orders" },
+        { error: "Can only review active or delivered orders" },
         { status: 400 }
       );
     }
@@ -65,8 +65,13 @@ export async function POST(req: NextRequest) {
     const revieweeId =
       order.buyerId === payload.userId ? order.sellerId : order.buyerId;
 
-    const review = await prisma.review.create({
-      data: {
+    const review = await prisma.review.upsert({
+      where: { orderId: validated.orderId },
+      update: {
+        rating: validated.rating,
+        comment: validated.comment,
+      },
+      create: {
         orderId: validated.orderId,
         reviewerId: payload.userId,
         revieweeId,

@@ -92,6 +92,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const existingOrder = await prisma.order.findFirst({
+      where: {
+        listingId: validated.listingId,
+        buyerId: payload.userId,
+        status: { notIn: ["DELIVERED", "CANCELLED"] },
+      },
+      include: {
+        listing: { select: { id: true, title: true, images: true, price: true } },
+        buyer: { select: { id: true, name: true, avatar: true } },
+        seller: { select: { id: true, name: true, avatar: true } },
+        delivery: true,
+      },
+    });
+
+    if (existingOrder) {
+      return NextResponse.json({ order: existingOrder, existing: true });
+    }
+
     const order = await prisma.order.create({
       data: {
         listingId: validated.listingId,
@@ -101,8 +119,10 @@ export async function POST(req: NextRequest) {
         notes: validated.notes,
       },
       include: {
-        listing: { select: { title: true } },
-        buyer: { select: { name: true } },
+        listing: { select: { id: true, title: true, images: true, price: true } },
+        buyer: { select: { id: true, name: true, avatar: true } },
+        seller: { select: { id: true, name: true, avatar: true } },
+        delivery: true,
       },
     });
 
@@ -117,7 +137,7 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ order }, { status: 201 });
+    return NextResponse.json({ order, existing: false }, { status: 201 });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(
