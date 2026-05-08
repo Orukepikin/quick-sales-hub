@@ -5,6 +5,10 @@ import { supabaseAdmin } from "@/lib/supabase";
 
 const allowedRoles = new Set(["BUYER", "SELLER", "DRIVER"]);
 
+function publicBio(value?: string | null) {
+  return value?.includes('"driverVerification"') ? null : value || null;
+}
+
 export async function POST(req: NextRequest) {
   try {
     const authHeader = req.headers.get("Authorization");
@@ -87,6 +91,7 @@ export async function POST(req: NextRequest) {
     });
 
     const { isBanned: _, ...safeUser } = user;
+    safeUser.bio = publicBio(safeUser.bio);
     return NextResponse.json({ user: safeUser, token });
   } catch (error) {
     console.error("OAuth login error:", error);

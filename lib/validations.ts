@@ -71,9 +71,9 @@ export const driverVerificationSchema = z.object({
   address: z.string().min(5, "Residential address is required").max(500),
   vehicleType: z.string().min(1, "Vehicle type is required").max(80),
   plateNumber: z.string().min(3, "Plate number is required").max(30),
-  driversLicense: z.string().min(1, "Driver's license upload is required"),
-  vehicleInsurance: z.string().optional(),
-  selfie: z.string().min(1, "Selfie with ID is required"),
+  driversLicense: z.string().url("Driver's license must be uploaded before submission"),
+  vehicleInsurance: z.string().url("Vehicle insurance must be uploaded before submission").optional().or(z.literal("")),
+  selfie: z.string().url("Selfie must be uploaded before submission"),
 });
 
 export const updateDeliverySchema = z.object({

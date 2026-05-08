@@ -3,6 +3,10 @@ import prisma from "@/lib/prisma";
 import { getUserFromRequest } from "@/lib/auth";
 import { updateProfileSchema } from "@/lib/validations";
 
+function publicBio(value?: string | null) {
+  return value?.includes('"driverVerification"') ? null : value || null;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const payload = getUserFromRequest(req);
@@ -39,7 +43,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    return NextResponse.json({ user });
+    return NextResponse.json({ user: { ...user, bio: publicBio(user.bio) } });
   } catch (error) {
     console.error("Auth me error:", error);
     return NextResponse.json(
@@ -108,7 +112,7 @@ export async function PATCH(req: NextRequest) {
       },
     });
 
-    return NextResponse.json({ user: updated });
+    return NextResponse.json({ user: { ...updated, bio: publicBio(updated.bio) } });
   } catch (error: any) {
     if (error.name === "ZodError") {
       return NextResponse.json(

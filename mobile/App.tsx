@@ -67,6 +67,8 @@ const roleOptions = [
 const categoryName = (id?: string) => categories.find((item) => item.id === id)?.name || id || "General";
 const roleName = (role?: string) =>
   roleOptions.find(([value]) => value === role)?.[1] || "Buyer";
+const publicBio = (value?: string | null) =>
+  value?.includes('"driverVerification"') ? "" : value || "";
 const shortDate = (value?: string) => {
   if (!value) return "Just now";
   const date = new Date(value);
@@ -396,7 +398,45 @@ export default function App() {
           />
         )}
         {screen === "messages" && <MessagesScreen user={user} initialListing={messageListing} onInitialHandled={() => setMessageListing(null)} />}
-        {screen === "alerts" && <AlertsScreen notifications={notifications} onRefresh={loadNotifications} />}
+        {screen === "alerts" && (
+          <AlertsScreen
+            notifications={notifications}
+            onRefresh={loadNotifications}
+            onOpen={async (notification) => {
+              try {
+                await notificationsApi.markRead(notification.id);
+                await loadNotifications();
+              } catch {}
+
+              const data = notification.data || {};
+              if (data.listingId) {
+                try {
+                  const existing = listings.find((item) => item.id === data.listingId);
+                  if (existing) setSelectedListing(existing);
+                  else {
+                    const response = await listingsApi.getOne(data.listingId);
+                    setSelectedListing(response.listing);
+                  }
+                } catch (error: any) {
+                  Alert.alert("Listing unavailable", error.message || "This listing could not be opened.");
+                }
+                return;
+              }
+
+              if (data.conversationId || notification.type === "message" || notification.type === "chat") {
+                setScreen("messages");
+                return;
+              }
+
+              if (notification.type === "driver" || data.status === "pending") {
+                setScreen("driver");
+                return;
+              }
+
+              if (notification.type === "listing") setScreen("home");
+            }}
+          />
+        )}
         {screen === "saved" && (
           <SavedScreen
             listings={savedListings}
@@ -1296,7 +1336,15 @@ function MessagesScreen({
   );
 }
 
-function AlertsScreen({ notifications, onRefresh }: { notifications: NotificationItem[]; onRefresh: () => Promise<void> }) {
+function AlertsScreen({
+  notifications,
+  onRefresh,
+  onOpen,
+}: {
+  notifications: NotificationItem[];
+  onRefresh: () => Promise<void>;
+  onOpen: (notification: NotificationItem) => void;
+}) {
   return (
     <FlatList
       data={notifications}
@@ -1306,10 +1354,11 @@ function AlertsScreen({ notifications, onRefresh }: { notifications: Notificatio
       refreshing={false}
       ListHeaderComponent={<Text style={styles.sectionTitle}>Notifications</Text>}
       renderItem={({ item }) => (
-        <View style={styles.notificationCard}>
+        <Pressable onPress={() => onOpen(item)} style={[styles.notificationCard, !item.isRead && styles.unreadCard]}>
           <Text style={styles.cardTitle}>{item.title}</Text>
           <Text style={styles.meta}>{item.body}</Text>
-        </View>
+          <Text style={styles.notificationHint}>Tap to open</Text>
+        </Pressable>
       )}
       ListEmptyComponent={<EmptyState title="No notifications" body="You are all caught up." />}
     />
@@ -1332,7 +1381,7 @@ function ProfileScreen({
     phone: user.phone || "",
     whatsapp: user.whatsapp || "",
     avatar: user.avatar || "",
-    bio: user.bio || "",
+    bio: publicBio(user.bio),
     location: user.location || "",
     role: user.role || "BUYER",
   });
@@ -1416,6 +1465,7 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
   const [status, setStatus] = useState("not_submitted");
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [uploadingField, setUploadingField] = useState<keyof DriverVerificationInput | null>(null);
   const [form, setForm] = useState<DriverVerificationInput>({
     fullName: user.name || "",
     phone: user.phone || "",
@@ -1456,8 +1506,36 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
     });
     if (result.canceled) return;
     const asset = result.assets[0];
-    const value = asset.base64 ? `data:image/jpeg;base64,${asset.base64}` : asset.uri;
-    setForm((prev) => ({ ...prev, [field]: value }));
+    const mimeType = (asset as any).mimeType || "image/jpeg";
+    const fileSize = (asset as any).fileSize || 0;
+    if (!mimeType.startsWith("image/")) {
+      Alert.alert("Invalid file", "Please upload a clear JPG or PNG image.");
+      return;
+    }
+    if (fileSize && fileSize > 5 * 1024 * 1024) {
+      Alert.alert("File too large", "Upload images must be 5MB or less.");
+      return;
+    }
+    if ((asset.width || 0) < 300 || (asset.height || 0) < 300) {
+      Alert.alert("Image too small", "Please upload a clearer image with at least 300px width and height.");
+      return;
+    }
+    if (!asset.base64) {
+      Alert.alert("Upload failed", "Could not read this image. Please choose another photo.");
+      return;
+    }
+
+    try {
+      setUploadingField(field);
+      const uploaded = await uploadApi.images([`data:${mimeType};base64,${asset.base64}`]);
+      const value = uploaded.urls?.[0];
+      if (!value) throw new Error("Upload did not return a file URL.");
+      setForm((prev) => ({ ...prev, [field]: value }));
+    } catch (error: any) {
+      Alert.alert("Upload failed", error.message || "Please try again.");
+    } finally {
+      setUploadingField(null);
+    }
   };
 
   const submit = async () => {
@@ -1506,15 +1584,21 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
           <TextInput style={styles.input} placeholder="Vehicle type" value={form.vehicleType} onChangeText={(vehicleType) => setForm((p) => ({ ...p, vehicleType }))} />
           <TextInput style={styles.input} placeholder="Plate number" value={form.plateNumber} onChangeText={(plateNumber) => setForm((p) => ({ ...p, plateNumber }))} />
           <Pressable onPress={() => pickDocument("driversLicense")} style={styles.photoButton}>
-            <Text style={styles.photoButtonText}>{form.driversLicense ? "Driver license added" : "Upload driver license"}</Text>
+            <Text style={styles.photoButtonText}>
+              {uploadingField === "driversLicense" ? "Uploading license..." : form.driversLicense ? "Driver license uploaded" : "Upload driver license"}
+            </Text>
           </Pressable>
           <Pressable onPress={() => pickDocument("vehicleInsurance")} style={styles.photoButton}>
-            <Text style={styles.photoButtonText}>{form.vehicleInsurance ? "Insurance added" : "Upload vehicle insurance (optional)"}</Text>
+            <Text style={styles.photoButtonText}>
+              {uploadingField === "vehicleInsurance" ? "Uploading insurance..." : form.vehicleInsurance ? "Insurance uploaded" : "Upload vehicle insurance (optional)"}
+            </Text>
           </Pressable>
           <Pressable onPress={() => pickDocument("selfie")} style={styles.photoButton}>
-            <Text style={styles.photoButtonText}>{form.selfie ? "Selfie added" : "Upload selfie with ID"}</Text>
+            <Text style={styles.photoButtonText}>
+              {uploadingField === "selfie" ? "Uploading selfie..." : form.selfie ? "Selfie uploaded" : "Upload selfie with ID"}
+            </Text>
           </Pressable>
-          <PrimaryButton title={submitting ? "Submitting..." : "Submit for Approval"} onPress={submit} disabled={submitting} />
+          <PrimaryButton title={submitting ? "Submitting..." : "Submit for Approval"} onPress={submit} disabled={submitting || Boolean(uploadingField)} />
         </>
       )}
     </ScrollView>
@@ -2357,6 +2441,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: 16,
     marginBottom: 10,
+  },
+  unreadCard: {
+    borderColor: colors.blue,
+    backgroundColor: colors.blueBg,
+  },
+  notificationHint: {
+    color: colors.blue,
+    fontWeight: "900",
+    marginTop: 10,
   },
   profileCard: {
     backgroundColor: colors.white,

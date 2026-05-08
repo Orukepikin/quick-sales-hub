@@ -18,7 +18,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       status: user?.isVerified ? "approved" : user?.bio?.includes('"driverVerification"') ? "pending" : "not_submitted",
       isVerified: Boolean(user?.isVerified),
-      details: user?.bio || "",
+      details: user?.bio?.includes('"driverVerification"') ? "" : user?.bio || "",
     });
   } catch (error) {
     console.error("Get driver verification error:", error);

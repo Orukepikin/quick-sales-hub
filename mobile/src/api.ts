@@ -61,6 +61,7 @@ export const authApi = {
 
 export const listingsApi = {
   getAll: () => apiClient<{ listings: Listing[] }>("/api/listings?limit=60&includeMine=true"),
+  getOne: (id: string) => apiClient<{ listing: Listing }>(`/api/listings/${id}`),
   create: (body: {
     title: string;
     description: string;
@@ -196,6 +197,13 @@ export type NotificationItem = {
   id: string;
   title: string;
   body: string;
+  type?: string;
+  data?: {
+    listingId?: string;
+    conversationId?: string;
+    status?: string;
+    screen?: string;
+  } | null;
   isRead: boolean;
   createdAt: string;
 };
