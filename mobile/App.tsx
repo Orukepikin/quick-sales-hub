@@ -69,6 +69,45 @@ const roleName = (role?: string) =>
   roleOptions.find(([value]) => value === role)?.[1] || "Buyer";
 const publicBio = (value?: string | null) =>
   value?.includes('"driverVerification"') ? "" : value || "";
+const featuredCategoryIds = [
+  "phones",
+  "electronics",
+  "computers",
+  "gadgets",
+  "vehicles",
+  "real-estate",
+  "property",
+  "fashion",
+  "home-furniture-appliances",
+  "jobs",
+  "services",
+  "agriculture",
+  "beauty",
+  "babies-kids",
+  "sports",
+  "repair-construction",
+];
+const categoryIconText = (id: string, name: string) => {
+  const iconMap: Record<string, string> = {
+    phones: "PH",
+    electronics: "EL",
+    computers: "PC",
+    gadgets: "GD",
+    vehicles: "CA",
+    "real-estate": "RE",
+    property: "HM",
+    fashion: "FS",
+    "home-furniture-appliances": "HF",
+    jobs: "JB",
+    services: "SV",
+    agriculture: "AG",
+    beauty: "BT",
+    "babies-kids": "KD",
+    sports: "SP",
+    "repair-construction": "RC",
+  };
+  return iconMap[id] || name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+};
 const shortDate = (value?: string) => {
   if (!value) return "Just now";
   const date = new Date(value);
@@ -590,6 +629,13 @@ function BuyerHomeScreen({
   onNavigate: (screen: Screen) => void;
 }) {
   const [activeCategory, setActiveCategory] = useState("all");
+  const categoryFilters = useMemo(() => {
+    const prioritized = featuredCategoryIds
+      .map((id) => categories.find((item) => item.id === id))
+      .filter(Boolean) as typeof categories;
+    const used = new Set(prioritized.map((item) => item.id));
+    return [...prioritized, ...categories.filter((item) => !used.has(item.id)).slice(0, 10)];
+  }, []);
   const filteredListings = useMemo(
     () => activeCategory === "all" ? listings : listings.filter((listing) => listing.category === activeCategory),
     [activeCategory, listings]
@@ -620,23 +666,54 @@ function BuyerHomeScreen({
               <Text style={styles.heroButtonText}>Start Selling - Free</Text>
             </Pressable>
           </View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
-            <Pressable
-              onPress={() => setActiveCategory("all")}
-              style={[styles.categoryChip, activeCategory === "all" && styles.categoryChipActive]}
-            >
-              <Text style={[styles.categoryChipText, activeCategory === "all" && styles.categoryChipTextActive]}>All</Text>
-            </Pressable>
-            {categories.slice(0, 8).map((item) => (
-              <Pressable
-                key={item.id}
-                onPress={() => setActiveCategory(item.id)}
-                style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
-              >
-                <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]}>{item.name}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <View style={styles.categoryPanel}>
+            <Text style={styles.categoryPanelTitle}>Popular Categories</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
+              <View style={styles.categoryRailRows}>
+                <View style={styles.categoryRailRow}>
+                  <Pressable
+                    onPress={() => setActiveCategory("all")}
+                    style={[styles.categoryChip, activeCategory === "all" && styles.categoryChipActive]}
+                  >
+                    <View style={[styles.categoryIcon, activeCategory === "all" && styles.categoryIconActive]}>
+                      <Text style={[styles.categoryIconText, activeCategory === "all" && styles.categoryIconTextActive]}>AL</Text>
+                    </View>
+                    <Text style={[styles.categoryChipText, activeCategory === "all" && styles.categoryChipTextActive]}>All</Text>
+                  </Pressable>
+                  {categoryFilters.filter((_, index) => index % 2 === 0).map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => setActiveCategory(item.id)}
+                      style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
+                    >
+                      <View style={[styles.categoryIcon, activeCategory === item.id && styles.categoryIconActive]}>
+                        <Text style={[styles.categoryIconText, activeCategory === item.id && styles.categoryIconTextActive]}>
+                          {categoryIconText(item.id, item.name)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]} numberOfLines={1}>{item.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <View style={styles.categoryRailRow}>
+                  {categoryFilters.filter((_, index) => index % 2 === 1).map((item) => (
+                    <Pressable
+                      key={item.id}
+                      onPress={() => setActiveCategory(item.id)}
+                      style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
+                    >
+                      <View style={[styles.categoryIcon, activeCategory === item.id && styles.categoryIconActive]}>
+                        <Text style={[styles.categoryIconText, activeCategory === item.id && styles.categoryIconTextActive]}>
+                          {categoryIconText(item.id, item.name)}
+                        </Text>
+                      </View>
+                      <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]} numberOfLines={1}>{item.name}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+            </ScrollView>
+          </View>
           <Text style={styles.sectionTitle}>Featured Listings</Text>
         </>
       }
@@ -2021,16 +2098,57 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   categoryRail: {
+    marginBottom: 4,
+  },
+  categoryPanel: {
     marginBottom: 18,
   },
+  categoryPanelTitle: {
+    color: colors.ink,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 10,
+  },
+  categoryRailRows: {
+    gap: 10,
+  },
+  categoryRailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  categoryIcon: {
+    width: 28,
+    height: 28,
+    borderRadius: 9,
+    backgroundColor: colors.blueBg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 8,
+  },
+  categoryIconActive: {
+    backgroundColor: colors.white,
+  },
+  categoryIconText: {
+    color: colors.blue,
+    fontSize: 10,
+    fontWeight: "900",
+  },
+  categoryIconTextActive: {
+    color: colors.blue,
+  },
   categoryChip: {
-    borderRadius: 999,
+    minWidth: 128,
+    maxWidth: 190,
+    minHeight: 48,
+    borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.line,
     backgroundColor: colors.white,
-    paddingHorizontal: 18,
-    paddingVertical: 11,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
     marginRight: 10,
+    flexDirection: "row",
+    alignItems: "center",
   },
   categoryChipActive: {
     backgroundColor: colors.blue,
