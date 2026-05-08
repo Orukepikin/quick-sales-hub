@@ -108,6 +108,56 @@ const categoryIconText = (id: string, name: string) => {
   };
   return iconMap[id] || name.split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 };
+const categoryImages: Record<string, string> = {
+  phones: "https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?auto=format&fit=crop&w=240&q=60",
+  electronics: "https://images.unsplash.com/photo-1550009158-9ebf69173e03?auto=format&fit=crop&w=240&q=60",
+  computers: "https://images.unsplash.com/photo-1496181133206-80ce9b88a853?auto=format&fit=crop&w=240&q=60",
+  gadgets: "https://images.unsplash.com/photo-1550745165-9bc0b252726f?auto=format&fit=crop&w=240&q=60",
+  vehicles: "https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=240&q=60",
+  "real-estate": "https://images.unsplash.com/photo-1560518883-ce09059eeffa?auto=format&fit=crop&w=240&q=60",
+  property: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=240&q=60",
+  fashion: "https://images.unsplash.com/photo-1445205170230-053b83016050?auto=format&fit=crop&w=240&q=60",
+  "home-furniture-appliances": "https://images.unsplash.com/photo-1555041469-a586c61ea9bc?auto=format&fit=crop&w=240&q=60",
+  jobs: "https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?auto=format&fit=crop&w=240&q=60",
+  services: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=240&q=60",
+  agriculture: "https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=240&q=60",
+  beauty: "https://images.unsplash.com/photo-1522335789203-aabd1fc54bc9?auto=format&fit=crop&w=240&q=60",
+  "babies-kids": "https://images.unsplash.com/photo-1515488042361-ee00e0ddd4e4?auto=format&fit=crop&w=240&q=60",
+  sports: "https://images.unsplash.com/photo-1517649763962-0c623066013b?auto=format&fit=crop&w=240&q=60",
+  "repair-construction": "https://images.unsplash.com/photo-1503387762-592deb58ef4e?auto=format&fit=crop&w=240&q=60",
+};
+const jobFilterValues = {
+  profession: [
+    ["all", "Profession"],
+    ["driver-jobs", "Driver"],
+    ["computing-jobs", "Computing & IT"],
+    ["sales-jobs", "Sales"],
+    ["teaching-jobs", "Teaching"],
+    ["healthcare-jobs", "Healthcare"],
+    ["construction-jobs", "Construction"],
+  ],
+  type: [
+    ["all", "Job type"],
+    ["full-time", "Full-time"],
+    ["part-time", "Part-time"],
+    ["contract", "Contract"],
+    ["remote", "Remote"],
+  ],
+  salary: [
+    ["all", "Salary"],
+    ["under-100k", "Under NGN 100k"],
+    ["100k-250k", "NGN 100k - 250k"],
+    ["250k-500k", "NGN 250k - 500k"],
+    ["500k-plus", "NGN 500k+"],
+  ],
+};
+const popularJobCategories = [
+  { id: "part-time", title: "Part-time jobs", image: "https://images.unsplash.com/photo-1516321497487-e288fb19713f?auto=format&fit=crop&w=220&q=60" },
+  { id: "large-companies", title: "Large companies", image: "https://images.unsplash.com/photo-1486406146926-c627a92ad1ab?auto=format&fit=crop&w=220&q=60" },
+  { id: "student-jobs", title: "Student jobs", image: "https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=220&q=60" },
+  { id: "office-work", title: "Office work", image: "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=220&q=60" },
+  { id: "over-45", title: "Over 45", image: "https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=220&q=60" },
+];
 const shortDate = (value?: string) => {
   if (!value) return "Just now";
   const date = new Date(value);
@@ -467,7 +517,7 @@ export default function App() {
                 return;
               }
 
-              if (notification.type === "driver" || data.status === "pending") {
+              if (notification.type === "driver" || data.screen === "driver" || data.deliveryId || data.status === "pending") {
                 setScreen("driver");
                 return;
               }
@@ -498,6 +548,7 @@ export default function App() {
       <TabBar active={screen} user={user} onChange={setScreen} />
 
       <ListingModal
+        user={user}
         listing={selectedListing}
         onClose={() => setSelectedListing(null)}
         onMessage={(listing) => {
@@ -629,6 +680,9 @@ function BuyerHomeScreen({
   onNavigate: (screen: Screen) => void;
 }) {
   const [activeCategory, setActiveCategory] = useState("all");
+  const [jobProfession, setJobProfession] = useState("all");
+  const [jobType, setJobType] = useState("all");
+  const [jobSalary, setJobSalary] = useState("all");
   const categoryFilters = useMemo(() => {
     const prioritized = featuredCategoryIds
       .map((id) => categories.find((item) => item.id === id))
@@ -675,8 +729,8 @@ function BuyerHomeScreen({
                     onPress={() => setActiveCategory("all")}
                     style={[styles.categoryChip, activeCategory === "all" && styles.categoryChipActive]}
                   >
-                    <View style={[styles.categoryIcon, activeCategory === "all" && styles.categoryIconActive]}>
-                      <Text style={[styles.categoryIconText, activeCategory === "all" && styles.categoryIconTextActive]}>AL</Text>
+                    <View style={styles.categoryPhoto}>
+                      <Text style={styles.categoryPhotoText}>All</Text>
                     </View>
                     <Text style={[styles.categoryChipText, activeCategory === "all" && styles.categoryChipTextActive]}>All</Text>
                   </Pressable>
@@ -686,10 +740,12 @@ function BuyerHomeScreen({
                       onPress={() => setActiveCategory(item.id)}
                       style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
                     >
-                      <View style={[styles.categoryIcon, activeCategory === item.id && styles.categoryIconActive]}>
-                        <Text style={[styles.categoryIconText, activeCategory === item.id && styles.categoryIconTextActive]}>
-                          {categoryIconText(item.id, item.name)}
-                        </Text>
+                      <View style={styles.categoryPhoto}>
+                        {categoryImages[item.id] ? (
+                          <Image source={{ uri: categoryImages[item.id] }} style={styles.categoryPhotoImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={styles.categoryPhotoText}>{categoryIconText(item.id, item.name)}</Text>
+                        )}
                       </View>
                       <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]} numberOfLines={1}>{item.name}</Text>
                     </Pressable>
@@ -702,10 +758,12 @@ function BuyerHomeScreen({
                       onPress={() => setActiveCategory(item.id)}
                       style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
                     >
-                      <View style={[styles.categoryIcon, activeCategory === item.id && styles.categoryIconActive]}>
-                        <Text style={[styles.categoryIconText, activeCategory === item.id && styles.categoryIconTextActive]}>
-                          {categoryIconText(item.id, item.name)}
-                        </Text>
+                      <View style={styles.categoryPhoto}>
+                        {categoryImages[item.id] ? (
+                          <Image source={{ uri: categoryImages[item.id] }} style={styles.categoryPhotoImage} resizeMode="cover" />
+                        ) : (
+                          <Text style={styles.categoryPhotoText}>{categoryIconText(item.id, item.name)}</Text>
+                        )}
                       </View>
                       <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]} numberOfLines={1}>{item.name}</Text>
                     </Pressable>
@@ -714,6 +772,17 @@ function BuyerHomeScreen({
               </View>
             </ScrollView>
           </View>
+          {activeCategory === "jobs" && (
+            <JobFilterPanel
+              profession={jobProfession}
+              jobType={jobType}
+              salary={jobSalary}
+              onProfession={setJobProfession}
+              onJobType={setJobType}
+              onSalary={setJobSalary}
+              onSelectCategory={setActiveCategory}
+            />
+          )}
           <Text style={styles.sectionTitle}>Featured Listings</Text>
         </>
       }
@@ -727,6 +796,51 @@ function BuyerHomeScreen({
       )}
       ListEmptyComponent={<EmptyState title="No listings yet" body="Pull down to refresh or post the first ad." />}
     />
+  );
+}
+
+function JobFilterPanel({
+  profession,
+  jobType,
+  salary,
+  onProfession,
+  onJobType,
+  onSalary,
+  onSelectCategory,
+}: {
+  profession: string;
+  jobType: string;
+  salary: string;
+  onProfession: (value: string) => void;
+  onJobType: (value: string) => void;
+  onSalary: (value: string) => void;
+  onSelectCategory: (value: string) => void;
+}) {
+  return (
+    <View style={styles.jobPanel}>
+      <Text style={styles.jobPanelTitle}>What kind of job are you looking for?</Text>
+      <SelectRow label="Profession" value={profession} values={jobFilterValues.profession} onChange={onProfession} />
+      <View style={styles.jobFilterRow}>
+        <View style={styles.jobFilterHalf}>
+          <SelectRow label="Type" value={jobType} values={jobFilterValues.type} onChange={onJobType} />
+        </View>
+        <View style={styles.jobFilterHalf}>
+          <SelectRow label="Salary" value={salary} values={jobFilterValues.salary} onChange={onSalary} />
+        </View>
+      </View>
+      <Pressable onPress={() => onSelectCategory(profession === "all" ? "jobs" : profession)} style={styles.jobSearchButton}>
+        <Text style={styles.jobSearchButtonText}>Show matching jobs</Text>
+      </Pressable>
+      <Text style={styles.jobPopularTitle}>Popular job categories</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        {popularJobCategories.map((item) => (
+          <Pressable key={item.id} onPress={() => onSelectCategory("jobs")} style={styles.jobCategoryCard}>
+            <Image source={{ uri: item.image }} style={styles.jobCategoryImage} resizeMode="cover" />
+            <Text style={styles.jobCategoryTitle}>{item.title}</Text>
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 
@@ -852,6 +966,7 @@ function SellerHomeScreen({
 function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (screen: Screen) => void }) {
   const [deliveries, setDeliveries] = useState<any[]>([]);
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [updatingDeliveryId, setUpdatingDeliveryId] = useState<string | null>(null);
   const [verificationStatus, setVerificationStatus] = useState<"approved" | "pending" | "not_submitted">(
     user.isVerified ? "approved" : "not_submitted"
   );
@@ -881,6 +996,17 @@ function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (scree
   const earnings = completed.reduce((sum, item) => sum + Number(item.price || 0), 0);
   const pending = verificationStatus === "pending";
   const verified = user.isVerified || verificationStatus === "approved";
+  const updateDelivery = async (deliveryId: string, status: string, price?: number) => {
+    try {
+      setUpdatingDeliveryId(deliveryId);
+      await logisticsApi.updateStatus(deliveryId, status, price);
+      await loadDeliveries();
+    } catch (error: any) {
+      Alert.alert("Could not update delivery", error.message || "Please try again.");
+    } finally {
+      setUpdatingDeliveryId(null);
+    }
+  };
 
   return (
     <ScrollView
@@ -920,6 +1046,30 @@ function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (scree
           <Text style={styles.meta}>Status: {delivery.status}</Text>
           <Text style={styles.meta}>Pickup: {delivery.pickupAddress || delivery.order?.seller?.location || "Not provided"}</Text>
           <Text style={styles.meta}>Dropoff: {delivery.dropoffAddress || delivery.order?.buyer?.location || "Not provided"}</Text>
+          {delivery.status === "PENDING" && !delivery.driverId && (
+            <Pressable
+              onPress={() => updateDelivery(delivery.id, "ACCEPTED", Number(delivery.price || 0))}
+              disabled={updatingDeliveryId === delivery.id}
+              style={[styles.inlineActionButton, updatingDeliveryId === delivery.id && styles.disabled]}
+            >
+              <Text style={styles.inlineActionText}>{updatingDeliveryId === delivery.id ? "Accepting..." : "Accept Delivery Job"}</Text>
+            </Pressable>
+          )}
+          {delivery.status === "ACCEPTED" && delivery.driverId === user.id && (
+            <Pressable onPress={() => updateDelivery(delivery.id, "PICKED_UP")} style={styles.inlineActionButton}>
+              <Text style={styles.inlineActionText}>Mark Picked Up</Text>
+            </Pressable>
+          )}
+          {delivery.status === "PICKED_UP" && delivery.driverId === user.id && (
+            <Pressable onPress={() => updateDelivery(delivery.id, "IN_TRANSIT")} style={styles.inlineActionButton}>
+              <Text style={styles.inlineActionText}>Start Delivery</Text>
+            </Pressable>
+          )}
+          {delivery.status === "IN_TRANSIT" && delivery.driverId === user.id && (
+            <Pressable onPress={() => updateDelivery(delivery.id, "DELIVERED")} style={styles.inlineActionButton}>
+              <Text style={styles.inlineActionText}>Mark Delivered</Text>
+            </Pressable>
+          )}
         </View>
       ))}
     </ScrollView>
@@ -966,7 +1116,10 @@ function ListingCard({
         <Text style={styles.price}>{formatPrice(listing.price)}</Text>
         <Text style={styles.cardTitle} numberOfLines={2}>{listing.title}</Text>
         <Text style={styles.meta}>{listing.location} - {categoryName(listing.category)}</Text>
-        <Text style={styles.meta} numberOfLines={1}>Seller: {listing.seller?.name || "Seller"}</Text>
+        <View style={styles.verifiedRow}>
+          <Text style={styles.meta} numberOfLines={1}>Seller: {listing.seller?.name || "Seller"}</Text>
+          {listing.seller?.isVerified && <Text style={styles.verifiedMini}>✓</Text>}
+        </View>
       </View>
     </Pressable>
   );
@@ -1005,15 +1158,20 @@ function SavedScreen({
 }
 
 function ListingModal({
+  user,
   listing,
   onClose,
   onMessage,
 }: {
+  user: User;
   listing: Listing | null;
   onClose: () => void;
   onMessage: (listing: Listing) => void;
 }) {
   const [ordering, setOrdering] = useState(false);
+  const [deliveryLoading, setDeliveryLoading] = useState(false);
+  const [dropoffAddress, setDropoffAddress] = useState(user.location || "");
+  const [deliveryPrice, setDeliveryPrice] = useState("");
   if (!listing) return null;
   const whatsAppUrl = toWhatsappUrl(listing.seller?.phone);
 
@@ -1041,6 +1199,34 @@ function ListingModal({
     }
   };
 
+  const requestDelivery = async () => {
+    const dropoff = dropoffAddress.trim();
+    if (!dropoff) {
+      Alert.alert("Delivery address needed", "Add where the driver should deliver this item.");
+      return;
+    }
+
+    try {
+      setDeliveryLoading(true);
+      const orderResponse = await ordersApi.create({
+        listingId: listing.id,
+        amount: Number(listing.price || 0),
+        notes: "Order with delivery requested from Android app",
+      });
+      await logisticsApi.request({
+        orderId: orderResponse.order.id,
+        pickupAddress: listing.location || listing.seller?.phone || "Seller location",
+        dropoffAddress: dropoff,
+        price: parsePriceInput(deliveryPrice),
+      });
+      Alert.alert("Driver requested", "Verified drivers can now see this delivery request. Check Messages and Notifications for updates.");
+    } catch (error: any) {
+      Alert.alert("Could not request driver", error.message || "Please try again.");
+    } finally {
+      setDeliveryLoading(false);
+    }
+  };
+
   return (
     <Modal animationType="slide" visible={Boolean(listing)} onRequestClose={onClose}>
       <SafeAreaView style={styles.safe}>
@@ -1055,8 +1241,31 @@ function ListingModal({
           <Text style={styles.detailMeta}>{listing.location} - {categoryName(listing.category)}</Text>
           <Text style={styles.detailDesc}>{listing.description}</Text>
           <View style={styles.sellerBox}>
-            <Text style={styles.sellerName}>{listing.seller?.name || "Seller"}</Text>
+            <View style={styles.verifiedRow}>
+              <Text style={styles.sellerName}>{listing.seller?.name || "Seller"}</Text>
+              {listing.seller?.isVerified && <Text style={styles.verifiedBadge}>Verified</Text>}
+            </View>
             <Text style={styles.meta}>{listing.seller?.isVerified ? "Verified seller" : "Seller"}</Text>
+          </View>
+          <View style={styles.deliveryBox}>
+            <Text style={styles.cardTitle}>Need delivery?</Text>
+            <Text style={styles.meta}>Create the order and send it to verified drivers for pickup and drop-off.</Text>
+            <TextInput
+              value={dropoffAddress}
+              onChangeText={setDropoffAddress}
+              placeholder="Delivery address"
+              placeholderTextColor="#9ca3af"
+              style={styles.input}
+            />
+            <TextInput
+              value={deliveryPrice}
+              onChangeText={setDeliveryPrice}
+              placeholder="Delivery offer, optional"
+              placeholderTextColor="#9ca3af"
+              keyboardType="numeric"
+              style={styles.input}
+            />
+            <PrimaryButton title={deliveryLoading ? "Requesting driver..." : "Order with Driver Delivery"} onPress={requestDelivery} disabled={deliveryLoading} />
           </View>
           <PrimaryButton title={ordering ? "Creating order..." : "Buy / Reserve Item"} onPress={createOrder} disabled={ordering} />
           <PrimaryButton title="Contact on WhatsApp" onPress={contactSeller} />
@@ -2116,30 +2325,29 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
   },
-  categoryIcon: {
-    width: 28,
-    height: 28,
-    borderRadius: 9,
+  categoryPhoto: {
+    width: 58,
+    height: 46,
+    borderRadius: 13,
     backgroundColor: colors.blueBg,
+    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    marginRight: 8,
+    marginRight: 10,
   },
-  categoryIconActive: {
-    backgroundColor: colors.white,
+  categoryPhotoImage: {
+    width: "100%",
+    height: "100%",
   },
-  categoryIconText: {
+  categoryPhotoText: {
     color: colors.blue,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: "900",
   },
-  categoryIconTextActive: {
-    color: colors.blue,
-  },
   categoryChip: {
-    minWidth: 128,
-    maxWidth: 190,
-    minHeight: 48,
+    minWidth: 178,
+    maxWidth: 228,
+    minHeight: 66,
     borderRadius: 16,
     borderWidth: 1,
     borderColor: colors.line,
@@ -2157,9 +2365,66 @@ const styles = StyleSheet.create({
   categoryChipText: {
     color: colors.ink,
     fontWeight: "800",
+    flexShrink: 1,
   },
   categoryChipTextActive: {
     color: colors.white,
+  },
+  jobPanel: {
+    backgroundColor: colors.blue,
+    borderRadius: 22,
+    padding: 16,
+    marginBottom: 18,
+  },
+  jobPanelTitle: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: "900",
+    marginBottom: 12,
+  },
+  jobFilterRow: {
+    flexDirection: "row",
+    gap: 10,
+  },
+  jobFilterHalf: {
+    flex: 1,
+  },
+  jobSearchButton: {
+    backgroundColor: colors.yellow,
+    borderRadius: 14,
+    paddingVertical: 13,
+    paddingHorizontal: 14,
+    alignSelf: "flex-start",
+    marginTop: 4,
+    marginBottom: 16,
+  },
+  jobSearchButtonText: {
+    color: colors.ink,
+    fontWeight: "900",
+  },
+  jobPopularTitle: {
+    color: colors.white,
+    fontWeight: "900",
+    fontSize: 16,
+    marginBottom: 10,
+  },
+  jobCategoryCard: {
+    width: 132,
+    height: 90,
+    borderRadius: 16,
+    backgroundColor: colors.white,
+    marginRight: 10,
+    overflow: "hidden",
+  },
+  jobCategoryImage: {
+    width: "100%",
+    height: 52,
+  },
+  jobCategoryTitle: {
+    color: colors.ink,
+    fontWeight: "900",
+    fontSize: 12,
+    padding: 8,
   },
   sectionTitle: {
     fontSize: 26,
@@ -2345,6 +2610,40 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colors.line,
     marginBottom: 16,
+  },
+  deliveryBox: {
+    padding: 16,
+    borderRadius: 18,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.line,
+    marginBottom: 16,
+  },
+  verifiedRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    flexWrap: "wrap",
+  },
+  verifiedBadge: {
+    backgroundColor: colors.blue,
+    color: colors.white,
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    fontSize: 12,
+    fontWeight: "900",
+  },
+  verifiedMini: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colors.blue,
+    color: colors.white,
+    textAlign: "center",
+    fontSize: 12,
+    fontWeight: "900",
+    overflow: "hidden",
   },
   sellerName: {
     fontSize: 17,
@@ -2778,6 +3077,18 @@ const styles = StyleSheet.create({
     marginTop: 6,
     color: colors.ink,
     fontSize: 20,
+    fontWeight: "900",
+  },
+  inlineActionButton: {
+    backgroundColor: colors.blue,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    marginTop: 12,
+    alignItems: "center",
+  },
+  inlineActionText: {
+    color: colors.white,
     fontWeight: "900",
   },
   disabled: {

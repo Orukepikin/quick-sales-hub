@@ -81,6 +81,9 @@ export async function POST(req: NextRequest) {
 
     const order = await prisma.order.findUnique({
       where: { id: orderId },
+      include: {
+        listing: { select: { id: true, title: true } },
+      },
     });
 
     if (!order) {
@@ -112,6 +115,34 @@ export async function POST(req: NextRequest) {
     await prisma.order.update({
       where: { id: orderId },
       data: { status: "CONFIRMED" },
+    });
+
+    const verifiedDrivers = await prisma.user.findMany({
+      where: { role: "DRIVER", isVerified: true, isBanned: false },
+      select: { id: true },
+      take: 100,
+    });
+
+    if (verifiedDrivers.length > 0) {
+      await prisma.notification.createMany({
+        data: verifiedDrivers.map((driver) => ({
+          userId: driver.id,
+          title: "New delivery request",
+          body: `${order.listing?.title || "An item"} needs delivery. Open Driver Dashboard to accept.`,
+          type: "driver",
+          data: { deliveryId: delivery.id, orderId, listingId: order.listingId, screen: "driver" },
+        })),
+      });
+    }
+
+    await prisma.notification.create({
+      data: {
+        userId: payload.userId,
+        title: "Delivery requested",
+        body: "Verified drivers can now accept your delivery request.",
+        type: "driver",
+        data: { deliveryId: delivery.id, orderId, listingId: order.listingId, screen: "driver" },
+      },
     });
 
     return NextResponse.json({ delivery }, { status: 201 });

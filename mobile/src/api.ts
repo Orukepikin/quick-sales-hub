@@ -201,6 +201,8 @@ export type NotificationItem = {
   data?: {
     listingId?: string;
     conversationId?: string;
+    deliveryId?: string;
+    orderId?: string;
     status?: string;
     screen?: string;
   } | null;
