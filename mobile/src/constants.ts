@@ -191,7 +191,7 @@ export const categories = [
   { id: "art-collectibles", name: "Art & Collectibles" },
   { id: "gym-fitness", name: "Gym & Fitness Equipment" },
   { id: "tickets", name: "Tickets" },
-];
+].sort((a, b) => a.name.localeCompare(b.name));
 
 export const nigeriaStates = [
   "Abia",
@@ -231,7 +231,7 @@ export const nigeriaStates = [
   "Taraba",
   "Yobe",
   "Zamfara",
-];
+].sort((a, b) => a.localeCompare(b));
 
 export function formatPrice(value: number) {
   return `NGN ${new Intl.NumberFormat("en-NG").format(value || 0)}`;
