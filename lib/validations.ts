@@ -15,7 +15,7 @@ export const loginSchema = z.object({
 
 export const createListingSchema = z.object({
   title: z.string().min(3, "Title must be at least 3 characters").max(120),
-  description: z.string().min(10, "Description must be at least 10 characters").max(2000),
+  description: z.string().max(2000).optional().default(""),
   price: z.number().positive("Price must be positive"),
   category: z.string().min(1, "Category is required"),
   location: z.string().min(1, "Location is required"),

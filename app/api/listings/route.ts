@@ -17,9 +17,13 @@ export async function GET(req: NextRequest) {
     const maxPrice = searchParams.get("maxPrice");
     const sort = searchParams.get("sort") || "newest";
     const promoted = searchParams.get("promoted");
+    const includeMine = searchParams.get("includeMine") === "true";
+    const payload = getUserFromRequest(req);
 
     const where: Prisma.ListingWhereInput = {
-      status: "ACTIVE",
+      OR: includeMine && payload
+        ? [{ status: "ACTIVE" }, { sellerId: payload.userId }]
+        : [{ status: "ACTIVE" }],
     };
 
     if (category) where.category = category;
@@ -102,7 +106,7 @@ export async function POST(req: NextRequest) {
       data: {
         ...validated,
         sellerId: payload.userId,
-        status: "ACTIVE", // Auto-approve for now; change to PENDING for moderation
+        status: "PENDING",
       },
       include: {
         seller: {
@@ -120,10 +124,10 @@ export async function POST(req: NextRequest) {
     await prisma.notification.create({
       data: {
         userId: payload.userId,
-        title: "Listing published",
-        body: `${listing.title} is now live on Quick Sales Hub.`,
+        title: "Listing submitted",
+        body: `${listing.title} has been sent to admin for review.`,
         type: "listing",
-        data: { listingId: listing.id },
+        data: { listingId: listing.id, status: "PENDING" },
       },
     });
 

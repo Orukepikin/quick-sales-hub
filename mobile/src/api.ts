@@ -60,7 +60,7 @@ export const authApi = {
 };
 
 export const listingsApi = {
-  getAll: () => apiClient<{ listings: Listing[] }>("/api/listings?limit=60"),
+  getAll: () => apiClient<{ listings: Listing[] }>("/api/listings?limit=60&includeMine=true"),
   create: (body: {
     title: string;
     description: string;

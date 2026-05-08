@@ -82,6 +82,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [authMode, setAuthMode] = useState<AuthMode>("login");
   const [role, setRole] = useState("BUYER");
+  const [editingListing, setEditingListing] = useState<Listing | null>(null);
   const [authForm, setAuthForm] = useState({
     name: "",
     email: "",
@@ -259,6 +260,21 @@ export default function App() {
             <Text style={styles.authTitle}>{authMode === "login" ? "Welcome back" : "Create account"}</Text>
             <Text style={styles.authText}>Buy, sell, chat, and arrange delivery across Nigeria.</Text>
 
+            <View style={styles.authModeGrid}>
+              <Pressable
+                onPress={() => setAuthMode("login")}
+                style={[styles.authModePill, authMode === "login" && styles.authModePillActive]}
+              >
+                <Text style={[styles.authModeText, authMode === "login" && styles.authModeTextActive]}>Log In</Text>
+              </Pressable>
+              <Pressable
+                onPress={() => setAuthMode("signup")}
+                style={[styles.authModePill, authMode === "signup" && styles.authModePillActive]}
+              >
+                <Text style={[styles.authModeText, authMode === "signup" && styles.authModeTextActive]}>Sign Up</Text>
+              </Pressable>
+            </View>
+
             <View style={styles.roleGrid}>
               {roleOptions.map(([value, label]) => (
                 <Pressable
@@ -338,6 +354,7 @@ export default function App() {
       <ExpoStatusBar style="light" backgroundColor={colors.blue} />
       <AppHeader
         user={user}
+        screen={screen}
         query={searchQuery}
         unreadCount={unreadCount}
         onQuery={setSearchQuery}
@@ -354,10 +371,30 @@ export default function App() {
             onSelect={setSelectedListing}
             savedIds={savedIds}
             onToggleSave={toggleSave}
-            onNavigate={setScreen}
+            onNavigate={(nextScreen) => {
+              if (nextScreen === "post") setEditingListing(null);
+              setScreen(nextScreen);
+            }}
+            onEdit={(listing) => {
+              setEditingListing(listing);
+              setScreen("post");
+            }}
           />
         )}
-        {screen === "post" && <PostScreen onPosted={async () => { setScreen("home"); await loadListings(); }} />}
+        {screen === "post" && (
+          <PostScreen
+            listing={editingListing}
+            onCancel={() => {
+              setEditingListing(null);
+              setScreen("home");
+            }}
+            onPosted={async () => {
+              setEditingListing(null);
+              setScreen("home");
+              await loadListings();
+            }}
+          />
+        )}
         {screen === "messages" && <MessagesScreen user={user} initialListing={messageListing} onInitialHandled={() => setMessageListing(null)} />}
         {screen === "alerts" && <AlertsScreen notifications={notifications} onRefresh={loadNotifications} />}
         {screen === "saved" && (
@@ -396,12 +433,14 @@ export default function App() {
 
 function AppHeader({
   user,
+  screen,
   query,
   unreadCount,
   onQuery,
   onAlerts,
 }: {
   user: User;
+  screen: Screen;
   query: string;
   unreadCount: number;
   onQuery: (value: string) => void;
@@ -423,16 +462,18 @@ function AppHeader({
           {unreadCount > 0 && <Text style={styles.badgeCount}>{unreadCount}</Text>}
         </Pressable>
       </View>
-      <View style={styles.searchRow}>
-        <TextInput
-          value={query}
-          onChangeText={onQuery}
-          placeholder="Search phones, cars, fashion..."
-          placeholderTextColor="#9ca3af"
-          style={styles.searchInput}
-          returnKeyType="search"
-        />
-      </View>
+      {screen === "home" && (
+        <View style={styles.searchRow}>
+          <TextInput
+            value={query}
+            onChangeText={onQuery}
+            placeholder="Search phones, cars, fashion..."
+            placeholderTextColor="#9ca3af"
+            style={styles.searchInput}
+            returnKeyType="search"
+          />
+        </View>
+      )}
     </View>
   );
 }
@@ -446,6 +487,7 @@ function RoleHomeScreen({
   savedIds,
   onToggleSave,
   onNavigate,
+  onEdit,
 }: {
   user: User;
   listings: Listing[];
@@ -455,6 +497,7 @@ function RoleHomeScreen({
   savedIds: string[];
   onToggleSave: (listing: Listing) => void;
   onNavigate: (screen: Screen) => void;
+  onEdit: (listing: Listing) => void;
 }) {
   if (user.role === "SELLER") {
     return (
@@ -467,6 +510,7 @@ function RoleHomeScreen({
         savedIds={savedIds}
         onToggleSave={onToggleSave}
         onNavigate={onNavigate}
+        onEdit={onEdit}
       />
     );
   }
@@ -505,9 +549,15 @@ function BuyerHomeScreen({
   onToggleSave: (listing: Listing) => void;
   onNavigate: (screen: Screen) => void;
 }) {
+  const [activeCategory, setActiveCategory] = useState("all");
+  const filteredListings = useMemo(
+    () => activeCategory === "all" ? listings : listings.filter((listing) => listing.category === activeCategory),
+    [activeCategory, listings]
+  );
+
   return (
     <FlatList
-      data={listings}
+      data={filteredListings}
       numColumns={2}
       keyExtractor={(item) => item.id}
       contentContainerStyle={styles.listContent}
@@ -531,13 +581,20 @@ function BuyerHomeScreen({
             </Pressable>
           </View>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.categoryRail}>
-            <View style={[styles.categoryChip, styles.categoryChipActive]}>
-              <Text style={[styles.categoryChipText, styles.categoryChipTextActive]}>All</Text>
-            </View>
+            <Pressable
+              onPress={() => setActiveCategory("all")}
+              style={[styles.categoryChip, activeCategory === "all" && styles.categoryChipActive]}
+            >
+              <Text style={[styles.categoryChipText, activeCategory === "all" && styles.categoryChipTextActive]}>All</Text>
+            </Pressable>
             {categories.slice(0, 8).map((item) => (
-              <View key={item.id} style={styles.categoryChip}>
-                <Text style={styles.categoryChipText}>{item.name}</Text>
-              </View>
+              <Pressable
+                key={item.id}
+                onPress={() => setActiveCategory(item.id)}
+                style={[styles.categoryChip, activeCategory === item.id && styles.categoryChipActive]}
+              >
+                <Text style={[styles.categoryChipText, activeCategory === item.id && styles.categoryChipTextActive]}>{item.name}</Text>
+              </Pressable>
             ))}
           </ScrollView>
           <Text style={styles.sectionTitle}>Featured Listings</Text>
@@ -565,6 +622,7 @@ function SellerHomeScreen({
   savedIds,
   onToggleSave,
   onNavigate,
+  onEdit,
 }: {
   user: User;
   listings: Listing[];
@@ -574,11 +632,23 @@ function SellerHomeScreen({
   savedIds: string[];
   onToggleSave: (listing: Listing) => void;
   onNavigate: (screen: Screen) => void;
+  onEdit: (listing: Listing) => void;
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
   const myListings = listings.filter((listing) => listing.sellerId === user.id || listing.seller?.id === user.id);
-  const inquiryCount = Math.max(0, myListings.length * 3);
+  const sellerListingIds = new Set(myListings.map((listing) => listing.id));
+  const sellerInquiries = conversations.filter((conversation) =>
+    conversation.listing?.id ? sellerListingIds.has(conversation.listing.id) : false
+  );
+  const inquiryCount = sellerInquiries.length;
   const savedCount = myListings.filter((listing) => savedIds.includes(listing.id)).length;
+
+  useEffect(() => {
+    chatApi.getConversations()
+      .then((data) => setConversations(data.conversations || []))
+      .catch(() => setConversations([]));
+  }, []);
 
   const deleteListing = (listing: Listing) => {
     Alert.alert("Delete listing", `Remove "${listing.title}" from Quick Sales Hub?`, [
@@ -628,6 +698,12 @@ function SellerHomeScreen({
             <StatCard label="Saved by Buyers" value={String(savedCount)} accent={colors.yellow} />
             <StatCard label="Rating" value={Number(user.rating || 0).toFixed(1)} accent="#7c3aed" />
           </View>
+          {sellerInquiries.length > 0 && (
+            <Pressable onPress={() => onNavigate("messages")} style={styles.notificationCard}>
+              <Text style={styles.cardTitle}>Buyer Inquiries</Text>
+              <Text style={styles.meta}>You have {sellerInquiries.length} conversation{sellerInquiries.length === 1 ? "" : "s"} from buyers. Open chat to reply.</Text>
+            </Pressable>
+          )}
           <Text style={styles.sectionTitle}>My Listings</Text>
         </>
       }
@@ -646,6 +722,9 @@ function SellerHomeScreen({
           >
             <Text style={styles.dangerButtonText}>{deletingId === item.id ? "Deleting..." : "Delete"}</Text>
           </Pressable>
+          <Pressable onPress={() => onEdit(item)} style={styles.editButton}>
+            <Text style={styles.editButtonText}>Edit Listing</Text>
+          </Pressable>
         </View>
       )}
       ListEmptyComponent={<EmptyState title="No listings yet" body="Post your first ad and start selling to buyers." />}
@@ -656,11 +735,16 @@ function SellerHomeScreen({
 function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (screen: Screen) => void }) {
   const [deliveries, setDeliveries] = useState<any[]>([]);
   const [loadingDeliveries, setLoadingDeliveries] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<"approved" | "pending" | "not_submitted">(
+    user.isVerified ? "approved" : "not_submitted"
+  );
 
   const loadDeliveries = useCallback(async () => {
-    if (!user.isVerified) return;
     try {
       setLoadingDeliveries(true);
+      const verification = await driverApi.getVerification();
+      setVerificationStatus(verification.status);
+      if (!verification.isVerified) return;
       const data = await logisticsApi.getAll();
       setDeliveries(data.deliveries || []);
     } catch (error: any) {
@@ -668,7 +752,7 @@ function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (scree
     } finally {
       setLoadingDeliveries(false);
     }
-  }, [user.isVerified]);
+  }, []);
 
   useEffect(() => {
     loadDeliveries();
@@ -678,6 +762,8 @@ function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (scree
   const active = deliveries.filter((item) => ["ACCEPTED", "PICKED_UP", "IN_TRANSIT"].includes(item.status));
   const completed = deliveries.filter((item) => item.status === "DELIVERED");
   const earnings = completed.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  const pending = verificationStatus === "pending";
+  const verified = user.isVerified || verificationStatus === "approved";
 
   return (
     <ScrollView
@@ -687,25 +773,31 @@ function DriverHomeScreen({ user, onNavigate }: { user: User; onNavigate: (scree
       <View style={styles.dashboardHero}>
         <Text style={styles.dashboardKicker}>Driver Dashboard</Text>
         <Text style={styles.dashboardTitle}>
-          {user.isVerified ? "Manage delivery jobs and earnings." : "Complete verification before delivery access."}
+          {verified ? "Manage delivery jobs and earnings." : pending ? "Your submitted documents are being verified." : "Complete verification before delivery access."}
         </Text>
-        <Pressable onPress={() => onNavigate("driver")} style={styles.yellowButton}>
-          <Text style={styles.yellowButtonText}>{user.isVerified ? "Open Driver Jobs" : "Start Verification"}</Text>
-        </Pressable>
+        {!pending && (
+          <Pressable onPress={() => onNavigate("driver")} style={styles.yellowButton}>
+            <Text style={styles.yellowButtonText}>{verified ? "Open Driver Jobs" : "Start Verification"}</Text>
+          </Pressable>
+        )}
       </View>
       <View style={styles.statsGrid}>
-        <StatCard label="Available Jobs" value={user.isVerified ? String(available.length) : "Locked"} accent={colors.blue} />
+        <StatCard label="Available Jobs" value={verified ? String(available.length) : "Locked"} accent={colors.blue} />
         <StatCard label="Active Jobs" value={String(active.length)} accent="#f97316" />
         <StatCard label="Completed" value={String(completed.length)} accent={colors.success} />
         <StatCard label="Earnings" value={formatPrice(earnings)} accent={colors.yellow} />
       </View>
-      {!user.isVerified && (
+      {!verified && (
         <View style={styles.notificationCard}>
-          <Text style={styles.cardTitle}>Verification required</Text>
-          <Text style={styles.meta}>Drivers cannot access delivery features until their details are submitted and approved.</Text>
+          <Text style={styles.cardTitle}>{pending ? "Verification pending" : "Verification required"}</Text>
+          <Text style={styles.meta}>
+            {pending
+              ? "Your submitted documents are being verified. We will unlock delivery features after approval."
+              : "Drivers cannot access delivery features until their details are submitted and approved."}
+          </Text>
         </View>
       )}
-      {user.isVerified && deliveries.slice(0, 6).map((delivery) => (
+      {verified && deliveries.slice(0, 6).map((delivery) => (
         <View key={delivery.id} style={styles.notificationCard}>
           <Text style={styles.cardTitle}>{delivery.order?.listing?.title || "Delivery job"}</Text>
           <Text style={styles.meta}>Status: {delivery.status}</Text>
@@ -859,15 +951,30 @@ function ListingModal({
   );
 }
 
-function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
+function parsePriceInput(value: string) {
+  const normalized = value.replace(/[^\d.]/g, "");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function PostScreen({
+  listing,
+  onPosted,
+  onCancel,
+}: {
+  listing?: Listing | null;
+  onPosted: () => Promise<void>;
+  onCancel: () => void;
+}) {
+  const editing = Boolean(listing);
   const [form, setForm] = useState({
-    title: "",
-    category: categories[0].id,
-    location: nigeriaStates[0],
-    price: "",
-    description: "",
+    title: listing?.title || "",
+    category: listing?.category || categories[0].id,
+    location: listing?.location || nigeriaStates[0],
+    price: listing?.price ? String(listing.price) : "",
+    description: listing?.description || "",
   });
-  const [images, setImages] = useState<string[]>([]);
+  const [images, setImages] = useState<string[]>(listing?.images || []);
   const [posting, setPosting] = useState(false);
 
   const pickImages = async () => {
@@ -892,23 +999,32 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
   };
 
   const submit = async () => {
-    if (!form.title || !form.price || !form.description || !form.category || !form.location) {
-      Alert.alert("Missing details", "Please fill all required fields.");
+    const price = parsePriceInput(form.price);
+    if (!form.title.trim() || !price || !form.category || !form.location) {
+      Alert.alert("Missing details", "Please add a title, valid price, category, and location.");
       return;
     }
 
     try {
       setPosting(true);
-      const uploaded = images.length ? await uploadApi.images(images) : { urls: [] };
-      await listingsApi.create({
+      const newImages = images.filter((image) => image.startsWith("data:image"));
+      const existingImages = images.filter((image) => !image.startsWith("data:image"));
+      const uploaded = newImages.length ? await uploadApi.images(newImages) : { urls: [] };
+      const payload = {
         title: form.title.trim(),
         category: form.category,
         location: form.location,
-        price: Number(form.price),
-        description: form.description.trim(),
-        images: uploaded.urls || [],
-      });
-      Alert.alert("Posted", "Your ad is now live.");
+        price,
+        description: form.description.trim() || form.title.trim(),
+        images: [...existingImages, ...(uploaded.urls || [])],
+      };
+      if (editing && listing) {
+        await listingsApi.update(listing.id, payload);
+        Alert.alert("Updated", "Your ad changes were saved.");
+      } else {
+        await listingsApi.create(payload);
+        Alert.alert("Submitted", "Your ad has been submitted for admin approval.");
+      }
       setForm({ title: "", category: categories[0].id, location: nigeriaStates[0], price: "", description: "" });
       setImages([]);
       await onPosted();
@@ -921,7 +1037,8 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
 
   return (
     <ScrollView contentContainerStyle={styles.formContent}>
-      <Text style={styles.sectionTitle}>Post an Ad</Text>
+      <Text style={styles.sectionTitle}>{editing ? "Edit Listing" : "Post an Ad"}</Text>
+      {!editing && <Text style={styles.sectionText}>Your ad will be reviewed by admin before it appears publicly.</Text>}
       <Text style={styles.selectLabel}>Photos ({images.length}/10)</Text>
       <Pressable onPress={pickImages} style={styles.uploadBox}>
         <Text style={styles.uploadIcon}>PHOTO</Text>
@@ -930,7 +1047,15 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
       </Pressable>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.photoStrip}>
         {images.map((uri, index) => (
-          <Image key={`${uri}-${index}`} source={{ uri }} style={styles.thumb} />
+          <View key={`${uri}-${index}`} style={styles.thumbWrap}>
+            <Image source={{ uri }} style={styles.thumb} />
+            <Pressable
+              onPress={() => setImages((prev) => prev.filter((_, itemIndex) => itemIndex !== index))}
+              style={styles.removePhotoButton}
+            >
+              <Text style={styles.removePhotoText}>x</Text>
+            </Pressable>
+          </View>
         ))}
       </ScrollView>
       <Text style={styles.selectLabel}>Title *</Text>
@@ -939,7 +1064,7 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
       <Text style={styles.selectLabel}>Price (NGN) *</Text>
       <TextInput style={styles.input} placeholder="e.g. 450000" value={form.price} keyboardType="numeric" onChangeText={(price) => setForm((p) => ({ ...p, price }))} />
       <SelectRow label="Location" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
-      <Text style={styles.selectLabel}>Description *</Text>
+      <Text style={styles.selectLabel}>Description (optional)</Text>
       <TextInput
         style={[styles.input, styles.textArea]}
         placeholder="Describe your item in detail - condition, features, reason for selling, etc."
@@ -947,7 +1072,8 @@ function PostScreen({ onPosted }: { onPosted: () => Promise<void> }) {
         value={form.description}
         onChangeText={(description) => setForm((p) => ({ ...p, description }))}
       />
-      <PrimaryButton title={posting ? "Posting..." : "Post Ad - It's Free!"} onPress={submit} disabled={posting} />
+      <PrimaryButton title={posting ? "Saving..." : editing ? "Save Changes" : "Submit for Approval"} onPress={submit} disabled={posting} />
+      <SecondaryButton title="Cancel" onPress={onCancel} />
     </ScrollView>
   );
 }
@@ -1219,8 +1345,7 @@ function ProfileScreen({
     setForm((prev) => ({ ...prev, role: nextRole }));
     try {
       setSaving(true);
-      const nextForm = { ...form, role: nextRole };
-      const data = await authApi.updateProfile(nextForm);
+      const data = await authApi.updateProfile({ role: nextRole });
       onUser(data.user);
       onRoleSaved(data.user.role || nextRole);
     } catch (error: any) {
@@ -1234,7 +1359,15 @@ function ProfileScreen({
   const save = async () => {
     try {
       setSaving(true);
-      const data = await authApi.updateProfile(form);
+      const data = await authApi.updateProfile({
+        name: form.name.trim() || user.name,
+        phone: (form.phone || form.whatsapp || "").trim() || undefined,
+        whatsapp: (form.whatsapp || form.phone || "").trim() || undefined,
+        avatar: form.avatar.trim() || undefined,
+        bio: form.bio.trim() || undefined,
+        location: form.location || undefined,
+        role: form.role,
+      });
       onUser(data.user);
       onRoleSaved(data.user.role || form.role);
       Alert.alert("Saved", `${roleName(data.user.role || form.role)} mode is now active.`);
@@ -1340,7 +1473,6 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
       await driverApi.submitVerification(form);
       setStatus("pending");
       onUser({ ...user, role: "DRIVER", isVerified: false, phone: form.phone });
-      Alert.alert("Submitted", "Your driver verification is pending approval.");
     } catch (error: any) {
       Alert.alert("Could not submit", error.message || "Please try again.");
     } finally {
@@ -1357,7 +1489,16 @@ function DriverScreen({ user, onUser }: { user: User; onUser: (user: User) => vo
         Status: {status === "approved" ? "Approved" : status === "pending" ? "Pending review" : "Not submitted"}
       </Text>
       {status === "approved" && <EmptyState title="Access approved" body="You can receive driver jobs when logistics features are available." />}
-      {status !== "approved" && (
+      {status === "pending" && (
+        <View style={styles.pendingPanel}>
+          <Text style={styles.pendingTitle}>Verification pending</Text>
+          <Text style={styles.pendingText}>
+            Your submitted documents are being verified. You can check this page again for approval status.
+          </Text>
+          <SecondaryButton title="Check Status" onPress={loadStatus} />
+        </View>
+      )}
+      {status === "not_submitted" && (
         <>
           <TextInput style={styles.input} placeholder="Full legal name" value={form.fullName} onChangeText={(fullName) => setForm((p) => ({ ...p, fullName }))} />
           <TextInput style={styles.input} placeholder="Phone number" value={form.phone} keyboardType="phone-pad" onChangeText={(phone) => setForm((p) => ({ ...p, phone }))} />
@@ -1388,13 +1529,12 @@ function TabBar({ active, user, onChange }: { active: Screen; user: User; onChan
     ["saved", "Saved"],
     ["profile", "Profile"],
   ];
-  if (user.role === "DRIVER") tabs.splice(4, 0, ["driver", "Driver"]);
   return (
     <View style={styles.tabBar}>
       {tabs.map(([key, label]) => (
         <Pressable key={key} onPress={() => onChange(key)} style={[styles.tabItem, key === "post" && styles.postTabItem]}>
           <Text style={[styles.tabIcon, key === "post" && styles.postTabIcon, active === key && styles.tabTextActive]}>
-            {key === "home" ? "B" : key === "messages" ? "M" : key === "saved" ? "S" : key === "profile" ? "P" : key === "driver" ? "D" : "+"}
+            {key === "home" ? "H" : key === "messages" ? "C" : key === "saved" ? "S" : key === "profile" ? "P" : "+"}
           </Text>
           {key !== "post" && <Text style={[styles.tabText, active === key && styles.tabTextActive]}>{label}</Text>}
         </Pressable>
@@ -1525,6 +1665,30 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     marginBottom: 12,
+  },
+  authModeGrid: {
+    flexDirection: "row",
+    backgroundColor: colors.bg,
+    borderRadius: 999,
+    padding: 4,
+    marginBottom: 14,
+  },
+  authModePill: {
+    flex: 1,
+    minHeight: 42,
+    borderRadius: 999,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  authModePillActive: {
+    backgroundColor: colors.blue,
+  },
+  authModeText: {
+    color: colors.muted,
+    fontWeight: "900",
+  },
+  authModeTextActive: {
+    color: colors.white,
   },
   rolePill: {
     flex: 1,
@@ -1999,6 +2163,20 @@ const styles = StyleSheet.create({
     color: colors.danger,
     fontWeight: "900",
   },
+  editButton: {
+    minHeight: 42,
+    borderRadius: 12,
+    backgroundColor: colors.blueBg,
+    borderWidth: 1,
+    borderColor: colors.blueLight,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: 8,
+  },
+  editButtonText: {
+    color: colors.blue,
+    fontWeight: "900",
+  },
   formContent: {
     padding: 16,
     paddingBottom: 110,
@@ -2147,8 +2325,30 @@ const styles = StyleSheet.create({
     width: 78,
     height: 78,
     borderRadius: 12,
-    marginRight: 8,
     backgroundColor: colors.line,
+  },
+  thumbWrap: {
+    width: 78,
+    height: 78,
+    borderRadius: 12,
+    marginRight: 8,
+  },
+  removePhotoButton: {
+    position: "absolute",
+    top: -6,
+    right: -6,
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: colors.danger,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  removePhotoText: {
+    color: colors.white,
+    fontWeight: "900",
+    fontSize: 16,
+    lineHeight: 18,
   },
   notificationCard: {
     backgroundColor: colors.white,
@@ -2327,6 +2527,26 @@ const styles = StyleSheet.create({
     color: colors.blue,
     fontWeight: "900",
     marginTop: 6,
+  },
+  pendingPanel: {
+    backgroundColor: colors.white,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.line,
+    padding: 18,
+    marginTop: 12,
+  },
+  pendingTitle: {
+    color: colors.ink,
+    fontSize: 22,
+    fontWeight: "900",
+    marginBottom: 8,
+  },
+  pendingText: {
+    color: colors.muted,
+    fontSize: 15,
+    lineHeight: 22,
+    marginBottom: 10,
   },
   statsGrid: {
     flexDirection: "row",

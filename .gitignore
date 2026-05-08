@@ -12,3 +12,5 @@ android/.idea/
 mobile/node_modules/
 mobile/.expo/
 mobile/dist/
+mobile/android/release-keystore.properties
+mobile/android/app/quick-sales-hub-release.keystore
