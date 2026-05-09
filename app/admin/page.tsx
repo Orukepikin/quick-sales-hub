@@ -5,10 +5,18 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import AdminDashboard from "@/components/admin/AdminDashboard";
 import { authApi } from "@/lib/api-client";
+import { supabase } from "@/lib/supabase";
 
 type AdminState = "checking" | "login" | "ready" | "denied";
 
 const isAdminUser = (user: any) => String(user?.role || "").toUpperCase() === "ADMIN";
+
+const getAdminRedirectUrl = () => {
+  if (typeof window === "undefined") return "https://www.quicksalehub.com/admin";
+  const url = new URL(window.location.origin);
+  if (url.hostname === "quicksalehub.com") url.hostname = "www.quicksalehub.com";
+  return `${url.origin}/admin`;
+};
 
 export default function AdminPage() {
   const [state, setState] = useState<AdminState>("checking");
@@ -19,6 +27,21 @@ export default function AdminPage() {
   useEffect(() => {
     const checkAdminSession = async () => {
       try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.access_token) {
+          const data: any = await authApi.oauth({ role: "BUYER" }, session.access_token);
+          if (!isAdminUser(data.user)) {
+            localStorage.removeItem("token");
+            setState("denied");
+            return;
+          }
+
+          localStorage.setItem("token", data.token);
+          setUser(data.user);
+          setState("ready");
+          return;
+        }
+
         if (!localStorage.getItem("token")) {
           setState("login");
           return;
@@ -40,6 +63,24 @@ export default function AdminPage() {
 
     checkAdminSession();
   }, []);
+
+  const loginWithGoogle = async () => {
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: getAdminRedirectUrl(),
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
+        },
+      });
+      if (error) throw error;
+    } catch (error: any) {
+      toast.error(error.message || "Google sign-in failed");
+    }
+  };
 
   const login = async () => {
     try {
@@ -149,6 +190,20 @@ export default function AdminPage() {
             className="w-full py-3.5 bg-brand-blue text-white rounded-xl font-display font-bold hover:bg-brand-blue-dark transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {loading ? "Signing in..." : "Log In to Admin"}
+          </button>
+
+          <div className="flex items-center gap-3 my-5">
+            <div className="flex-1 h-px bg-gray-200" />
+            <span className="text-xs text-gray-400 font-semibold">OR</span>
+            <div className="flex-1 h-px bg-gray-200" />
+          </div>
+
+          <button
+            onClick={loginWithGoogle}
+            disabled={loading}
+            className="w-full py-3.5 bg-white text-gray-800 border-2 border-gray-200 rounded-xl font-display font-bold hover:bg-gray-50 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Continue with Google
           </button>
 
           <Link href="/" className="block text-center text-sm text-gray-500 hover:text-brand-blue mt-5">

@@ -41,15 +41,16 @@ export async function POST(req: NextRequest) {
       where: { email },
       select: { role: true, isVerified: true },
     });
+    const nextRole = existingUser?.role === "ADMIN" ? "ADMIN" : role;
 
     const user = await prisma.user.upsert({
       where: { email },
       update: {
         name,
         avatar,
-        role: role as any,
+        role: nextRole as any,
         isVerified:
-          role === "DRIVER" && existingUser?.role !== "DRIVER"
+          nextRole === "DRIVER" && existingUser?.role !== "DRIVER"
             ? false
             : undefined,
       },
@@ -57,8 +58,8 @@ export async function POST(req: NextRequest) {
         name,
         email,
         avatar,
-        role: role as any,
-        isVerified: role !== "DRIVER",
+        role: nextRole as any,
+        isVerified: nextRole !== "DRIVER",
         password: await hashPassword(`oauth:${googleUser.id}:${Date.now()}`),
       },
       select: {
