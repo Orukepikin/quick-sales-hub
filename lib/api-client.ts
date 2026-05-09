@@ -175,7 +175,11 @@ export const reviewsApi = {
 
 // ── Admin ───────────────────────────────────────────────────
 export const adminApi = {
-  getStats: () => apiClient("/api/admin/stats"),
+  getDashboard: () => apiClient("/api/admin"),
+  runAction: (data: Record<string, unknown>) =>
+    apiClient("/api/admin", { method: "PATCH", body: data }),
+
+  getStats: () => apiClient("/api/admin"),
 
   getUsers: (params?: Record<string, string>) => {
     const query = params ? "?" + new URLSearchParams(params).toString() : "";
