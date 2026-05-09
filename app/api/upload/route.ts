@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUserFromRequest } from "@/lib/auth";
 import { uploadMultipleImages } from "@/lib/cloudinary";
+import { supabaseAdmin } from "@/lib/supabase";
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const DATA_IMAGE_PATTERN = /^data:image\/(jpeg|jpg|png|webp);base64,/i;
+const STORAGE_BUCKET = process.env.SUPABASE_STORAGE_BUCKET || "listing-images";
 
 function hasCloudinaryConfig() {
   return Boolean(
@@ -19,6 +21,52 @@ function hasCloudinaryConfig() {
 function estimatedBase64Bytes(value: string) {
   const base64 = value.split(",")[1] || "";
   return Math.ceil((base64.length * 3) / 4);
+}
+
+function dataUriToUpload(value: string, index: number) {
+  const match = value.match(/^data:image\/(jpeg|jpg|png|webp);base64,(.+)$/i);
+  if (!match) throw new Error("Invalid image data");
+
+  const extension = match[1].toLowerCase() === "jpeg" ? "jpg" : match[1].toLowerCase();
+  return {
+    bytes: Buffer.from(match[2], "base64"),
+    contentType: `image/${extension === "jpg" ? "jpeg" : extension}`,
+    extension,
+    index,
+  };
+}
+
+async function uploadToSupabaseStorage(images: string[], userId: string) {
+  const { error: bucketError } = await supabaseAdmin.storage.createBucket(STORAGE_BUCKET, {
+    public: true,
+    fileSizeLimit: `${MAX_IMAGE_BYTES}`,
+    allowedMimeTypes: ["image/jpeg", "image/png", "image/webp"],
+  });
+
+  if (bucketError && !bucketError.message.toLowerCase().includes("already exists")) {
+    throw bucketError;
+  }
+
+  const urls: string[] = [];
+
+  for (let index = 0; index < images.length; index += 1) {
+    const image = images[index];
+    const file = dataUriToUpload(image, index);
+    const path = `${userId}/${Date.now()}-${index}.${file.extension}`;
+    const { error } = await supabaseAdmin.storage
+      .from(STORAGE_BUCKET)
+      .upload(path, file.bytes, {
+        contentType: file.contentType,
+        upsert: false,
+      });
+
+    if (error) throw error;
+
+    const { data } = supabaseAdmin.storage.from(STORAGE_BUCKET).getPublicUrl(path);
+    urls.push(data.publicUrl);
+  }
+
+  return urls;
 }
 
 export async function POST(req: NextRequest) {
@@ -58,21 +106,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!hasCloudinaryConfig()) {
-      return NextResponse.json(
-        { error: "Image storage is not configured. Please contact support." },
-        { status: 503 }
+    if (hasCloudinaryConfig()) {
+      const results = await uploadMultipleImages(
+        images,
+        `quick-sales-hub/listings/${payload.userId}`
       );
+
+      return NextResponse.json({
+        urls: results.map((r) => r.url),
+      });
     }
 
-    const results = await uploadMultipleImages(
-      images,
-      `quick-sales-hub/listings/${payload.userId}`
-    );
-
-    return NextResponse.json({
-      urls: results.map((r) => r.url),
-    });
+    const urls = await uploadToSupabaseStorage(images, payload.userId);
+    return NextResponse.json({ urls });
   } catch (error) {
     console.error("Upload error:", error);
     return NextResponse.json(

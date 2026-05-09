@@ -101,9 +101,20 @@ const categoryGroups = [
   { id: "services", name: "Services", children: ["computer-it-services", "cleaning-services", "event-services", "legal-services", "logistics-services", "printing-services", "travel-agents", "tutoring", "repair-services"] },
   { id: "home-furniture-appliances", name: "Home, Furniture & Appliances", children: ["furniture", "office-furniture", "home-appliances", "kitchen-appliances", "kitchenware", "home-accessories", "garden", "lighting", "bedding"] },
 ];
+const sortedCategoryGroups = [...categoryGroups].sort((a, b) => a.name.localeCompare(b.name));
 const childCategoryIds = new Set(categoryGroups.flatMap((group) => group.children));
 const categoryGroupFor = (id: string) => categoryGroups.find((group) => group.id === id);
+const parentCategoryFor = (id?: string) => {
+  if (!id) return sortedCategoryGroups[0]?.id || "";
+  if (parentCategoryIds.has(id)) return id;
+  return categoryGroups.find((group) => group.children.includes(id))?.id || sortedCategoryGroups[0]?.id || "";
+};
 const parentCategoryIds = new Set(categoryGroups.map((group) => group.id));
+const childCategoryOptions = (parentId: string) =>
+  (categoryGroupFor(parentId)?.children || [])
+    .map((id) => categories.find((item) => item.id === id))
+    .filter(Boolean)
+    .sort((a, b) => a!.name.localeCompare(b!.name)) as typeof categories;
 const listingMatchesCategory = (listingCategory: string, selectedCategory: string) => {
   if (selectedCategory === "all") return true;
   if (listingCategory === selectedCategory) return true;
@@ -1467,15 +1478,18 @@ function PostScreen({
   onCancel: () => void;
 }) {
   const editing = Boolean(listing);
+  const initialParentCategory = parentCategoryFor(listing?.category);
   const [form, setForm] = useState({
     title: listing?.title || "",
-    category: listing?.category || categories[0].id,
+    category: listing?.category && childCategoryIds.has(listing.category) ? listing.category : "",
     location: listing?.location || nigeriaStates[0],
     price: listing?.price ? String(listing.price) : "",
     description: listing?.description || "",
   });
+  const [parentCategory, setParentCategory] = useState(initialParentCategory);
   const [images, setImages] = useState<string[]>(listing?.images || []);
   const [posting, setPosting] = useState(false);
+  const subcategories = childCategoryOptions(parentCategory);
 
   const pickImages = async () => {
     const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -1500,8 +1514,14 @@ function PostScreen({
 
   const submit = async () => {
     const price = parsePriceInput(form.price);
-    if (!form.title.trim() || !price || !form.category || !form.location) {
+    const selectedCategory = form.category || parentCategory;
+    if (!form.title.trim() || !price || !selectedCategory || !form.location) {
       Alert.alert("Missing details", "Please add a title, valid price, category, and location.");
+      return;
+    }
+
+    if (subcategories.length > 0 && !form.category) {
+      Alert.alert("Choose subcategory", "Please choose the subcategory under this category.");
       return;
     }
 
@@ -1512,7 +1532,7 @@ function PostScreen({
       const uploaded = newImages.length ? await uploadApi.images(newImages) : { urls: [] };
       const payload = {
         title: form.title.trim(),
-        category: form.category,
+        category: selectedCategory,
         location: form.location,
         price,
         description: form.description.trim() || form.title.trim(),
@@ -1525,7 +1545,8 @@ function PostScreen({
         await listingsApi.create(payload);
         Alert.alert("Submitted", "Your ad has been submitted for admin approval.");
       }
-      setForm({ title: "", category: categories[0].id, location: nigeriaStates[0], price: "", description: "" });
+      setParentCategory(sortedCategoryGroups[0].id);
+      setForm({ title: "", category: "", location: nigeriaStates[0], price: "", description: "" });
       setImages([]);
       await onPosted();
     } catch (error: any) {
@@ -1560,7 +1581,23 @@ function PostScreen({
       </ScrollView>
       <Text style={styles.selectLabel}>Title *</Text>
       <TextInput style={styles.input} placeholder="e.g. iPhone 15 Pro Max 256GB - Brand New" value={form.title} onChangeText={(title) => setForm((p) => ({ ...p, title }))} />
-      <SelectRow label="Category" value={form.category} values={categories.map((item) => [item.id, item.name])} onChange={(category) => setForm((p) => ({ ...p, category }))} />
+      <SelectRow
+        label="Category"
+        value={parentCategory}
+        values={sortedCategoryGroups.map((item) => [item.id, item.name])}
+        onChange={(category) => {
+          setParentCategory(category);
+          setForm((p) => ({ ...p, category: "" }));
+        }}
+      />
+      {subcategories.length > 0 && (
+        <SelectRow
+          label="Subcategory"
+          value={form.category}
+          values={[["", "Select subcategory"], ...subcategories.map((item) => [item.id, item.name])]}
+          onChange={(category) => setForm((p) => ({ ...p, category }))}
+        />
+      )}
       <Text style={styles.selectLabel}>Price (NGN) *</Text>
       <TextInput style={styles.input} placeholder="e.g. 450000" value={form.price} keyboardType="numeric" onChangeText={(price) => setForm((p) => ({ ...p, price }))} />
       <SelectRow label="Location" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
