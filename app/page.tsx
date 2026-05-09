@@ -75,6 +75,11 @@ export default function HomePage() {
     const isVerified = Boolean(user.isVerified);
     localStorage.setItem("qsh_role", role);
     localStorage.removeItem("qsh_driver_verified");
+    if (localStorage.getItem("qsh_admin_redirect") === "1" && apiRoleToUi(user.role) === "admin") {
+      localStorage.removeItem("qsh_admin_redirect");
+      window.location.replace("/admin");
+      return;
+    }
     const nextUser = { ...user, role, isVerified };
     setLocalUser(nextUser);
     setDriverVerified(isVerified);

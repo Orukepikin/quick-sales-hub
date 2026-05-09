@@ -12,10 +12,10 @@ type AdminState = "checking" | "login" | "ready" | "denied";
 const isAdminUser = (user: any) => String(user?.role || "").toUpperCase() === "ADMIN";
 
 const getAdminRedirectUrl = () => {
-  if (typeof window === "undefined") return "https://www.quicksalehub.com/admin";
+  if (typeof window === "undefined") return "https://www.quicksalehub.com/";
   const url = new URL(window.location.origin);
   if (url.hostname === "quicksalehub.com") url.hostname = "www.quicksalehub.com";
-  return `${url.origin}/admin`;
+  return `${url.origin}/`;
 };
 
 export default function AdminPage() {
@@ -66,6 +66,8 @@ export default function AdminPage() {
 
   const loginWithGoogle = async () => {
     try {
+      localStorage.setItem("qsh_admin_redirect", "1");
+      localStorage.setItem("qsh_role", "admin");
       const { error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
