@@ -164,7 +164,12 @@ export async function POST(req: NextRequest) {
         title: "New Message",
         body: `${message.sender.name}: ${validated.content.slice(0, 50)}`,
         type: "message",
-        data: { conversationId, messageId: message.id },
+        data: {
+          conversationId,
+          messageId: message.id,
+          listingId: validated.listingId || null,
+          screen: "messages",
+        },
       },
     });
 

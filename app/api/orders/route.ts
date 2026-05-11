@@ -133,7 +133,12 @@ export async function POST(req: NextRequest) {
         title: "New Order!",
         body: `${order.buyer.name} placed an order for ${order.listing.title}`,
         type: "order",
-        data: { orderId: order.id },
+        data: {
+          orderId: order.id,
+          listingId: order.listing.id,
+          amount: order.amount,
+          screen: "orders",
+        },
       },
     });
 

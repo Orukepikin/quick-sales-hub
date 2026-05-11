@@ -50,9 +50,9 @@ export async function POST(req: NextRequest) {
       where: { id: validated.orderId },
     });
 
-    if (!order || !["DELIVERED", "CONFIRMED", "IN_TRANSIT"].includes(order.status)) {
+    if (!order || !["PENDING", "CONFIRMED", "IN_TRANSIT", "DELIVERED"].includes(order.status)) {
       return NextResponse.json(
-        { error: "Can only review active or delivered orders" },
+        { error: "Reserve or buy the item before reviewing" },
         { status: 400 }
       );
     }

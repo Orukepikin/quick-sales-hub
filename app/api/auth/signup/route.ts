@@ -7,6 +7,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const validated = signupSchema.parse(body);
+    const phone = validated.phone?.trim() || null;
 
     // Check if user exists
     const existing = await prisma.user.findUnique({
@@ -20,6 +21,19 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    if (phone) {
+      const existingPhone = await prisma.user.findFirst({
+        where: { phone },
+      });
+
+      if (existingPhone) {
+        return NextResponse.json(
+          { error: "Phone number already registered" },
+          { status: 400 }
+        );
+      }
+    }
+
     // Create user
     const hashedPassword = await hashPassword(validated.password);
     const user = await prisma.user.create({
@@ -27,7 +41,7 @@ export async function POST(req: NextRequest) {
         name: validated.name,
         email: validated.email,
         password: hashedPassword,
-        phone: validated.phone,
+        phone,
         role: validated.role as any,
       },
       select: {
@@ -38,6 +52,7 @@ export async function POST(req: NextRequest) {
         avatar: true,
         isVerified: true,
         location: true,
+        phone: true,
       },
     });
 
@@ -54,6 +69,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: error.errors[0].message },
         { status: 400 }
+      );
+    }
+    if (error.code === "P2002") {
+      return NextResponse.json(
+        { error: "Email or phone number already registered" },
+        { status: 409 }
       );
     }
     console.error("Signup error:", error);

@@ -29,12 +29,14 @@ import {
   Conversation,
   driverApi,
   DriverVerificationInput,
+  getStoredToken,
   Listing,
   listingsApi,
   logisticsApi,
   Message,
   notificationsApi,
   NotificationItem,
+  OrderItem,
   ordersApi,
   ReviewItem,
   reviewsApi,
@@ -216,6 +218,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>("home");
   const [listings, setListings] = useState<Listing[]>([]);
   const [selectedListing, setSelectedListing] = useState<Listing | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<OrderItem | null>(null);
   const [messageListing, setMessageListing] = useState<Listing | null>(null);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
@@ -239,7 +242,11 @@ export default function App() {
   useEffect(() => {
     const bootstrap = async () => {
       try {
-        await clearStoredToken();
+        const token = await getStoredToken();
+        if (token) {
+          const data = await authApi.me();
+          setUser(data.user);
+        }
         await loadListings();
       } catch {
         await clearStoredToken();
@@ -530,7 +537,14 @@ export default function App() {
             }}
           />
         )}
-        {screen === "messages" && <MessagesScreen user={user} initialListing={messageListing} onInitialHandled={() => setMessageListing(null)} />}
+        {screen === "messages" && (
+          <MessagesScreen
+            user={user}
+            initialListing={messageListing}
+            onInitialHandled={() => setMessageListing(null)}
+            onClose={() => setScreen("home")}
+          />
+        )}
         {screen === "alerts" && (
           <AlertsScreen
             notifications={notifications}
@@ -542,6 +556,18 @@ export default function App() {
               } catch {}
 
               const data = notification.data || {};
+              if (data.orderId) {
+                try {
+                  const response = await ordersApi.getAll();
+                  const order = (response.orders || []).find((item) => item.id === data.orderId);
+                  if (order) setSelectedOrder(order);
+                  else Alert.alert("Order unavailable", "This order could not be found.");
+                } catch (error: any) {
+                  Alert.alert("Order unavailable", error.message || "This order could not be opened.");
+                }
+                return;
+              }
+
               if (data.listingId) {
                 try {
                   const existing = listings.find((item) => item.id === data.listingId);
@@ -601,6 +627,8 @@ export default function App() {
           setScreen("messages");
         }}
       />
+
+      <OrderModal order={selectedOrder} onClose={() => setSelectedOrder(null)} />
     </SafeAreaView>
   );
 }
@@ -956,18 +984,27 @@ function SellerHomeScreen({
 }) {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [sellerOrders, setSellerOrders] = useState<OrderItem[]>([]);
   const myListings = listings.filter((listing) => listing.sellerId === user.id || listing.seller?.id === user.id);
   const sellerListingIds = new Set(myListings.map((listing) => listing.id));
   const sellerInquiries = conversations.filter((conversation) =>
     conversation.listing?.id ? sellerListingIds.has(conversation.listing.id) : false
   );
-  const inquiryCount = sellerInquiries.length;
+  const orderInquiries = sellerOrders.filter((order) => order.listing?.id ? sellerListingIds.has(order.listing.id) : false);
+  const inquiryCount = new Set([
+    ...sellerInquiries.map((conversation) => `chat:${conversation.id}`),
+    ...orderInquiries.map((order) => `order:${order.id}`),
+  ]).size;
   const savedCount = myListings.filter((listing) => savedIds.includes(listing.id)).length;
 
   useEffect(() => {
-    chatApi.getConversations()
-      .then((data) => setConversations(data.conversations || []))
-      .catch(() => setConversations([]));
+    Promise.all([
+      chatApi.getConversations().catch(() => ({ conversations: [] })),
+      ordersApi.getAll().catch(() => ({ orders: [] })),
+    ]).then(([conversationData, orderData]) => {
+      setConversations(conversationData.conversations || []);
+      setSellerOrders(orderData.orders || []);
+    });
   }, []);
 
   const deleteListing = (listing: Listing) => {
@@ -1311,7 +1348,10 @@ function ListingModal({
       });
       setRelatedOrderId(response.order.id);
       setDeliveryRequested(Boolean(response.order.delivery));
-      Alert.alert(response.existing ? "Order already exists" : "Order created", "The seller has been notified. You can continue the conversation in Messages.");
+      Alert.alert(
+        response.existing ? "Order already exists" : "Order created",
+        "The seller has been notified. You can now submit a review after your reservation, or continue in Messages."
+      );
     } catch (error: any) {
       Alert.alert("Could not create order", error.message || "Please try again.");
     } finally {
@@ -1351,7 +1391,7 @@ function ListingModal({
 
   const submitReview = async () => {
     if (!relatedOrderId) {
-      Alert.alert("Create an order first", "Buy or reserve this item before rating the seller.");
+      Alert.alert("Reserve first", "Tap Buy / Reserve Item first, then submit your seller rating.");
       return;
     }
     try {
@@ -1367,7 +1407,7 @@ function ListingModal({
       }
       Alert.alert("Review saved", "Your rating is now visible on the seller's public profile.");
     } catch (error: any) {
-      Alert.alert("Could not save review", error.message || "Please try again.");
+      Alert.alert("Could not save review", error.message || "Please reserve the item first, then try again.");
     } finally {
       setReviewing(false);
     }
@@ -1376,6 +1416,11 @@ function ListingModal({
   return (
     <Modal animationType="slide" visible={Boolean(listing)} onRequestClose={onClose}>
       <SafeAreaView style={styles.safe}>
+        <View style={styles.modalTopBar}>
+          <Pressable onPress={onClose} style={styles.modalCloseButton}>
+            <Text style={styles.linkText}>Close</Text>
+          </Pressable>
+        </View>
         <ScrollView contentContainerStyle={styles.modalContent}>
           {listing.images?.[0] ? (
             <Image source={{ uri: listing.images[0] }} style={styles.detailImage} />
@@ -1456,6 +1501,52 @@ function ListingModal({
           <PrimaryButton title="Contact on WhatsApp" onPress={contactSeller} />
           <SecondaryButton title="Message in App" onPress={() => onMessage(listing)} />
           <SecondaryButton title="Close" onPress={onClose} />
+        </ScrollView>
+      </SafeAreaView>
+    </Modal>
+  );
+}
+
+function OrderModal({ order, onClose }: { order: OrderItem | null; onClose: () => void }) {
+  if (!order) return null;
+  const delivery = order.delivery;
+
+  return (
+    <Modal animationType="slide" visible={Boolean(order)} onRequestClose={onClose}>
+      <SafeAreaView style={styles.safe}>
+        <View style={styles.modalTopBar}>
+          <Pressable onPress={onClose} style={styles.modalCloseButton}>
+            <Text style={styles.linkText}>Close</Text>
+          </Pressable>
+        </View>
+        <ScrollView contentContainerStyle={styles.modalContent}>
+          {order.listing?.images?.[0] ? (
+            <Image source={{ uri: order.listing.images[0] }} style={styles.detailImage} />
+          ) : (
+            <View style={styles.detailPlaceholder} />
+          )}
+          <Text style={styles.detailTitle}>{order.listing?.title || "Order Details"}</Text>
+          <Text style={styles.detailPrice}>{formatPrice(order.amount || order.listing?.price || 0)}</Text>
+          <View style={styles.deliveryBox}>
+            <Text style={styles.cardTitle}>Order status</Text>
+            <Text style={styles.meta}>Status: {order.status || "PENDING"}</Text>
+            <Text style={styles.meta}>Buyer: {order.buyer?.name || "-"}</Text>
+            <Text style={styles.meta}>Seller: {order.seller?.name || "-"}</Text>
+          </View>
+          <View style={styles.deliveryBox}>
+            <Text style={styles.cardTitle}>Delivery request</Text>
+            {delivery ? (
+              <>
+                <Text style={styles.meta}>Status: {delivery.status}</Text>
+                <Text style={styles.meta}>Pickup: {delivery.pickupAddress || "-"}</Text>
+                <Text style={styles.meta}>Dropoff: {delivery.dropoffAddress || "-"}</Text>
+                <Text style={styles.meta}>Bid amount: {formatPrice(delivery.price || 0)}</Text>
+                <Text style={styles.meta}>Tracking: {delivery.trackingCode || "Pending"}</Text>
+              </>
+            ) : (
+              <Text style={styles.meta}>No driver request has been attached to this order yet.</Text>
+            )}
+          </View>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -1609,7 +1700,11 @@ function PostScreen({
         value={form.description}
         onChangeText={(description) => setForm((p) => ({ ...p, description }))}
       />
-      <PrimaryButton title={posting ? "Saving..." : editing ? "Save Changes" : "Submit for Approval"} onPress={submit} disabled={posting} />
+      <PrimaryButton
+        title={posting ? (editing ? "Saving changes..." : "Submitting...") : editing ? "Save Changes" : "Submit for Approval"}
+        onPress={submit}
+        disabled={posting}
+      />
       <SecondaryButton title="Cancel" onPress={onCancel} />
     </ScrollView>
   );
@@ -1664,10 +1759,12 @@ function MessagesScreen({
   user,
   initialListing,
   onInitialHandled,
+  onClose,
 }: {
   user: User;
   initialListing: Listing | null;
   onInitialHandled: () => void;
+  onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -1778,6 +1875,9 @@ function MessagesScreen({
             <Text style={styles.chatTitle}>{receiver?.name || "Conversation"}</Text>
             <Text style={styles.meta}>{active.listing?.title || "Direct message"}</Text>
           </View>
+          <Pressable onPress={onClose}>
+            <Text style={styles.linkText}>Close</Text>
+          </Pressable>
         </View>
         <FlatList
           data={messages}
@@ -2808,6 +2908,21 @@ const styles = StyleSheet.create({
   modalContent: {
     padding: 16,
     paddingBottom: 42,
+  },
+  modalTopBar: {
+    minHeight: 48,
+    paddingHorizontal: 16,
+    alignItems: "flex-end",
+    justifyContent: "center",
+    backgroundColor: colors.white,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.line,
+  },
+  modalCloseButton: {
+    minHeight: 36,
+    paddingHorizontal: 12,
+    alignItems: "center",
+    justifyContent: "center",
   },
   detailImage: {
     width: "100%",
