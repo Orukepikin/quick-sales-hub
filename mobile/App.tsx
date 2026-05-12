@@ -1573,7 +1573,8 @@ function PostScreen({
   const [form, setForm] = useState({
     title: listing?.title || "",
     category: listing?.category && childCategoryIds.has(listing.category) ? listing.category : "",
-    location: listing?.location || nigeriaStates[0],
+    state: listing?.location?.split(" - ")[0] || nigeriaStates[0],
+    address: listing?.location?.includes(" - ") ? listing.location.split(" - ").slice(1).join(" - ") : "",
     price: listing?.price ? String(listing.price) : "",
     description: listing?.description || "",
   });
@@ -1606,8 +1607,9 @@ function PostScreen({
   const submit = async () => {
     const price = parsePriceInput(form.price);
     const selectedCategory = form.category || parentCategory;
-    if (!form.title.trim() || !price || !selectedCategory || !form.location) {
-      Alert.alert("Missing details", "Please add a title, valid price, category, and location.");
+    const location = `${form.state}${form.address.trim() ? ` - ${form.address.trim()}` : ""}`;
+    if (!form.title.trim() || !price || !selectedCategory || !form.state || !form.address.trim()) {
+      Alert.alert("Missing details", "Please add a title, valid price, category, state, and specific address.");
       return;
     }
 
@@ -1624,7 +1626,7 @@ function PostScreen({
       const payload = {
         title: form.title.trim(),
         category: selectedCategory,
-        location: form.location,
+        location,
         price,
         description: form.description.trim() || form.title.trim(),
         images: [...existingImages, ...(uploaded.urls || [])],
@@ -1637,7 +1639,7 @@ function PostScreen({
         Alert.alert("Submitted", "Your ad has been submitted for admin approval.");
       }
       setParentCategory(sortedCategoryGroups[0].id);
-      setForm({ title: "", category: "", location: nigeriaStates[0], price: "", description: "" });
+      setForm({ title: "", category: "", state: nigeriaStates[0], address: "", price: "", description: "" });
       setImages([]);
       await onPosted();
     } catch (error: any) {
@@ -1691,7 +1693,14 @@ function PostScreen({
       )}
       <Text style={styles.selectLabel}>Price (NGN) *</Text>
       <TextInput style={styles.input} placeholder="e.g. 450000" value={form.price} keyboardType="numeric" onChangeText={(price) => setForm((p) => ({ ...p, price }))} />
-      <SelectRow label="Location" value={form.location} values={nigeriaStates.map((state) => [state, state])} onChange={(location) => setForm((p) => ({ ...p, location }))} />
+      <SelectRow label="State" value={form.state} values={nigeriaStates.map((state) => [state, state])} onChange={(state) => setForm((p) => ({ ...p, state }))} />
+      <Text style={styles.selectLabel}>Specific Address *</Text>
+      <TextInput
+        style={styles.input}
+        placeholder="Shop/house number, street, nearest bus stop"
+        value={form.address}
+        onChangeText={(address) => setForm((p) => ({ ...p, address }))}
+      />
       <Text style={styles.selectLabel}>Description (optional)</Text>
       <TextInput
         style={[styles.input, styles.textArea]}
@@ -1866,7 +1875,11 @@ function MessagesScreen({
   if (active) {
     const receiver = otherParticipant(active);
     return (
-      <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.flex}>
+      <KeyboardAvoidingView
+        behavior="padding"
+        keyboardVerticalOffset={Platform.OS === "android" ? 0 : 8}
+        style={styles.flex}
+      >
         <View style={styles.chatHeader}>
           <Pressable onPress={() => { setActive(null); setMessages([]); loadConversations(); }}>
             <Text style={styles.linkText}>Back</Text>
@@ -1883,6 +1896,7 @@ function MessagesScreen({
           data={messages}
           keyExtractor={(item) => item.id}
           contentContainerStyle={styles.messagesList}
+          keyboardShouldPersistTaps="handled"
           renderItem={({ item }) => {
             const mine = item.senderId === user.id;
             return (
@@ -2864,8 +2878,9 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     borderTopColor: colors.line,
     borderTopWidth: 1,
-    paddingBottom: Platform.OS === "ios" ? 18 : 8,
-    paddingTop: 6,
+    minHeight: Platform.OS === "android" ? 86 : 82,
+    paddingBottom: Platform.OS === "ios" ? 18 : 22,
+    paddingTop: 8,
   },
   tabItem: {
     flex: 1,
@@ -3419,7 +3434,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 8,
-    padding: 10,
+    paddingHorizontal: 10,
+    paddingTop: 10,
+    paddingBottom: Platform.OS === "android" ? 18 : 10,
     backgroundColor: colors.white,
     borderTopWidth: 1,
     borderTopColor: colors.line,
