@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import AdminDashboard from "@/components/admin/AdminDashboard";
@@ -24,21 +24,43 @@ export default function AdminPage() {
   const [form, setForm] = useState({ email: "", password: "" });
   const [loading, setLoading] = useState(false);
 
+  const finishAdminSession = useCallback(async (accessToken: string) => {
+    const data: any = await authApi.oauth({ role: "BUYER" }, accessToken);
+    if (!isAdminUser(data.user)) {
+      localStorage.removeItem("token");
+      setUser(null);
+      setState("denied");
+      return;
+    }
+
+    localStorage.removeItem("qsh_admin_redirect");
+    localStorage.removeItem("qsh_role");
+    localStorage.setItem("token", data.token);
+    setUser(data.user);
+    setState("ready");
+
+    if (window.location.hash || window.location.search) {
+      window.history.replaceState({}, "", "/admin");
+    }
+  }, []);
+
   useEffect(() => {
     const checkAdminSession = async () => {
       try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const authError =
+          urlParams.get("error_description") ||
+          urlParams.get("error") ||
+          new URLSearchParams(window.location.hash.replace(/^#/, "")).get("error_description");
+        if (authError) {
+          toast.error(authError.replace(/\+/g, " "));
+          setState("login");
+          return;
+        }
+
         const { data: { session } } = await supabase.auth.getSession();
         if (session?.access_token) {
-          const data: any = await authApi.oauth({ role: "BUYER" }, session.access_token);
-          if (!isAdminUser(data.user)) {
-            localStorage.removeItem("token");
-            setState("denied");
-            return;
-          }
-
-          localStorage.setItem("token", data.token);
-          setUser(data.user);
-          setState("ready");
+          await finishAdminSession(session.access_token);
           return;
         }
 
@@ -62,10 +84,24 @@ export default function AdminPage() {
     };
 
     checkAdminSession();
-  }, []);
+
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session?.access_token) {
+        finishAdminSession(session.access_token).catch((error) => {
+          toast.error(error.message || "Could not complete admin sign-in");
+          setState("login");
+        });
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, [finishAdminSession]);
 
   const loginWithGoogle = async () => {
     try {
+      setLoading(true);
+      await supabase.auth.signOut();
+      localStorage.removeItem("token");
       localStorage.setItem("qsh_admin_redirect", "1");
       localStorage.setItem("qsh_role", "admin");
       const { error } = await supabase.auth.signInWithOAuth({
@@ -74,13 +110,14 @@ export default function AdminPage() {
           redirectTo: getAdminRedirectUrl(),
           queryParams: {
             access_type: "offline",
-            prompt: "consent",
+            prompt: "select_account",
           },
         },
       });
       if (error) throw error;
     } catch (error: any) {
       toast.error(error.message || "Google sign-in failed");
+      setLoading(false);
     }
   };
 
