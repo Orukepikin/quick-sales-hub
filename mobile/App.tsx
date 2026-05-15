@@ -288,6 +288,57 @@ export default function App() {
     [listings, savedIds]
   );
 
+  const markNotificationReadQuietly = (notificationId: string) => {
+    setNotifications((prev) =>
+      prev.map((item) => (item.id === notificationId ? { ...item, isRead: true } : item))
+    );
+    notificationsApi.markRead(notificationId).catch(() => {});
+  };
+
+  const openNotification = (notification: NotificationItem) => {
+    markNotificationReadQuietly(notification.id);
+    const data = notification.data || {};
+
+    if (data.conversationId || notification.type === "message" || notification.type === "chat") {
+      setScreen("messages");
+      return;
+    }
+
+    if (notification.type === "driver" || data.screen === "driver" || data.deliveryId) {
+      setScreen("driver");
+      return;
+    }
+
+    if (data.listingId) {
+      const existing = listings.find((item) => item.id === data.listingId);
+      if (existing) {
+        setSelectedListing(existing);
+        return;
+      }
+
+      setScreen("home");
+      listingsApi.getOne(data.listingId)
+        .then((response) => setSelectedListing(response.listing))
+        .catch((error: any) => {
+          Alert.alert("Listing unavailable", error.message || "This listing could not be opened.");
+        });
+      return;
+    }
+
+    if (data.orderId) {
+      setScreen("messages");
+      ordersApi.getAll()
+        .then((response) => {
+          const order = (response.orders || []).find((item) => item.id === data.orderId);
+          if (order) setSelectedOrder(order);
+        })
+        .catch(() => {});
+      return;
+    }
+
+    if (notification.type === "listing") setScreen("home");
+  };
+
   const toggleSave = async (listing: Listing) => {
     const saved = savedIds.includes(listing.id);
     setSavedIds((prev) => (saved ? prev.filter((id) => id !== listing.id) : [...prev, listing.id]));
@@ -549,51 +600,7 @@ export default function App() {
           <AlertsScreen
             notifications={notifications}
             onRefresh={loadNotifications}
-            onOpen={async (notification) => {
-              try {
-                await notificationsApi.markRead(notification.id);
-                await loadNotifications();
-              } catch {}
-
-              const data = notification.data || {};
-              if (data.orderId) {
-                try {
-                  const response = await ordersApi.getAll();
-                  const order = (response.orders || []).find((item) => item.id === data.orderId);
-                  if (order) setSelectedOrder(order);
-                  else Alert.alert("Order unavailable", "This order could not be found.");
-                } catch (error: any) {
-                  Alert.alert("Order unavailable", error.message || "This order could not be opened.");
-                }
-                return;
-              }
-
-              if (data.listingId) {
-                try {
-                  const existing = listings.find((item) => item.id === data.listingId);
-                  if (existing) setSelectedListing(existing);
-                  else {
-                    const response = await listingsApi.getOne(data.listingId);
-                    setSelectedListing(response.listing);
-                  }
-                } catch (error: any) {
-                  Alert.alert("Listing unavailable", error.message || "This listing could not be opened.");
-                }
-                return;
-              }
-
-              if (data.conversationId || notification.type === "message" || notification.type === "chat") {
-                setScreen("messages");
-                return;
-              }
-
-              if (notification.type === "driver" || data.screen === "driver" || data.deliveryId || data.status === "pending") {
-                setScreen("driver");
-                return;
-              }
-
-              if (notification.type === "listing") setScreen("home");
-            }}
+            onOpen={openNotification}
           />
         )}
         {screen === "saved" && (
